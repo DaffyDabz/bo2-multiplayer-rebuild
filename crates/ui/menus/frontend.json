@@ -1,0 +1,1631 @@
+[
+  {
+    "name": "iw4l_main",
+    "fullscreen": 1,
+    "rect": {"x": 0, "y": 0, "w": 640, "h": 480, "horz_align": 4, "vert_align": 4},
+    "handlers": {"open": [{"Script": " focusFirst;"}], "esc": [{"Script": "open quit_popmenu;"}]},
+    "items": [
+      {"name": "background", "background": "mw2_main_background", "rect": {"x": 0, "y": 0, "w": 640, "h": 480, "horz_align": 4, "vert_align": 4}, "fore_color": [1, 1, 1, 1], "static_flags": 1048576},
+      {"name": "clouds", "background": "mw2_main_cloud_overlay", "rect": {"x": -107, "y": 0, "w": 1708, "h": 480, "horz_align": 0, "vert_align": 0}, "fore_color": [1, 1, 1, 0.45], "static_flags": 1048576, "float_exp": [[0, "-107 op 6 op 34 op 1 op 4 60000 op 3 60000 op 2 854"]]},
+      {"name": "soldier", "background": "mw2_main_mp_image", "rect": {"x": -427, "y": -240, "w": 854, "h": 480, "horz_align": 2, "vert_align": 2}, "fore_color": [1, 1, 1, 1], "static_flags": 1048576},
+      {"name": "glow", "background": "mockup_bg_glow", "rect": {"x": 0, "y": 0, "w": 640, "h": 480, "horz_align": 4, "vert_align": 4}, "fore_color": [1, 1, 1, 0.5], "static_flags": 1048576},
+      {"name": "create_game", "item_type": 1, "style": 1, "text_key": "CREATE GAME", "rect": {"x": -64, "y": 28, "w": 336, "h": 20, "horz_align": 1, "vert_align": 1}, "background": "menu_button_selection_bar", "fore_color": [1, 1, 1, 1], "back_color": [0, 0, 0, 0], "font_enum": 3, "text_scale": 0.375, "text_align_mode": 8, "text_align_x": 68, "text_align_y": 0, "handlers": {"action": [{"Script": "play mouse_click; exec \"ui_create_lobby\";"}], "focus": [{"Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"}], "leave_focus": [{"Script": "setItemColor self backcolor 0 0 0 0;"}]}},
+      {"name": "find_lobbies", "item_type": 1, "style": 1, "text_key": "FIND LOBBIES", "rect": {"x": -64, "y": 48, "w": 336, "h": 20, "horz_align": 1, "vert_align": 1}, "background": "menu_button_selection_bar", "fore_color": [1, 1, 1, 1], "back_color": [0, 0, 0, 0], "font_enum": 3, "text_scale": 0.375, "text_align_mode": 8, "text_align_x": 68, "text_align_y": 0, "handlers": {"action": [{"Script": "play mouse_click; open find_lobbies;"}], "focus": [{"Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"}], "leave_focus": [{"Script": "setItemColor self backcolor 0 0 0 0;"}]}},
+      {"name": "classes", "item_type": 1, "style": 1, "text_key": "CLASSES", "rect": {"x": -64, "y": 84, "w": 336, "h": 20, "horz_align": 1, "vert_align": 1}, "background": "menu_button_selection_bar", "fore_color": [1, 1, 1, 1], "back_color": [0, 0, 0, 0], "font_enum": 3, "text_scale": 0.375, "text_align_mode": 8, "text_align_x": 68, "text_align_y": 0, "handlers": {"action": [{"Script": "play mouse_click; open class_setup;"}], "focus": [{"Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"}], "leave_focus": [{"Script": "setItemColor self backcolor 0 0 0 0;"}]}},
+      {"name": "options", "item_type": 1, "style": 1, "text_key": "OPTIONS", "rect": {"x": -64, "y": 104, "w": 336, "h": 20, "horz_align": 1, "vert_align": 1}, "background": "menu_button_selection_bar", "fore_color": [1, 1, 1, 1], "back_color": [0, 0, 0, 0], "font_enum": 3, "text_scale": 0.375, "text_align_mode": 8, "text_align_x": 68, "text_align_y": 0, "handlers": {"action": [{"Script": "play mouse_click; open pc_options_video;"}], "focus": [{"Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"}], "leave_focus": [{"Script": "setItemColor self backcolor 0 0 0 0;"}]}},
+      {"name": "quit", "item_type": 1, "style": 1, "text_key": "QUIT", "rect": {"x": -64, "y": 140, "w": 336, "h": 20, "horz_align": 1, "vert_align": 1}, "background": "menu_button_selection_bar", "fore_color": [1, 1, 1, 1], "back_color": [0, 0, 0, 0], "font_enum": 3, "text_scale": 0.375, "text_align_mode": 8, "text_align_x": 68, "text_align_y": 0, "handlers": {"action": [{"Script": "play mouse_click; open quit_popmenu;"}], "focus": [{"Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"}], "leave_focus": [{"Script": "setItemColor self backcolor 0 0 0 0;"}]}},
+      {"name": "play_separator", "background": "white", "rect": {"x": 4, "y": 75, "w": 248, "h": 0.5, "horz_align": 1, "vert_align": 1}, "fore_color": [1, 1, 1, 0.25], "static_flags": 1048576},
+      {"name": "exit_separator", "background": "white", "rect": {"x": 4, "y": 131, "w": 248, "h": 0.5, "horz_align": 1, "vert_align": 1}, "fore_color": [1, 1, 1, 0.25], "static_flags": 1048576}
+    ]
+  },
+  {
+    "name": "game_lobby",
+    "base": "menu_xboxlive_privatelobby",
+    "fields": {
+      "fullscreen": 1,
+      "handlers": {
+        "open": [
+          {
+            "Script": "focusFirst;"
+          }
+        ],
+        "close": [],
+        "close_request": [],
+        "esc": [
+          {
+            "Script": "exec \"ui_leave_lobby\";"
+          }
+        ]
+      }
+    },
+    "item_overrides": [
+      {
+        "index": 6,
+        "fields": {
+          "text_key": "",
+          "text_exp": "op 38 s:75695f6c6f6262795f70726976616379 op 1",
+          "text_align_x": -60
+        }
+      },
+      {
+        "index": 7,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 8,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 9,
+        "fields": {
+          "material_exp": "op 38 s:75695f6c6f6262795f70726576696577 op 1"
+        }
+      },
+      {
+        "index": 10,
+        "fields": {
+          "text_exp": "op 38 s:75695f6d61705f6c6162656c op 1"
+        }
+      },
+      {
+        "index": 11,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 12,
+        "fields": {
+          "text_exp": "op 38 s:75695f6d6f64655f6c6162656c op 1"
+        }
+      },
+      {
+        "index": 13,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 14,
+        "fields": {
+          "disabled_exp": "op 35 s:75695f6c6f6262795f686f7374 op 1 op 12 0",
+          "vis_exp": "op 35 s:75695f6c6f6262795f686f7374 op 1",
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_start_match\";"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "index": 15,
+        "fields": {
+          "disabled_exp": "op 35 s:75695f6c6f6262795f686f7374 op 1 op 12 0",
+          "vis_exp": "op 35 s:75695f6c6f6262795f686f7374 op 1",
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; open lobby_game_setup;"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "index": 17,
+        "fields": {
+          "disabled_exp": "0",
+          "rect": {
+            "y": 76
+          },
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; open class_setup;"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "index": 19,
+        "fields": {
+          "text_key": "VOTE TO SKIP",
+          "rect": {
+            "y": 100
+          },
+          "disabled_exp": "0",
+          "vis_exp": "op 35 s:75695f6c6f6262795f7075626c6963 op 1",
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_vote_skip\";"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "index": 18,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 20,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 21,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 22,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 23,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 24,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 25,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 26,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 28,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 29,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 30,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 31,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 32,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 33,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 34,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 35,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 36,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 37,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 38,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 39,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 40,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 41,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 42,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 43,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 44,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 45,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 46,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 47,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 48,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 49,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 50,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 51,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 52,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 53,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 54,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 55,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 56,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 57,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 58,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 61,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 62,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 63,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 65,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 27,
+        "fields": {
+          "vis_exp": "1",
+          "text_key": "",
+          "text_exp": "op 38 s:75695f6c6f6262795f706c6179657273 op 1",
+          "rect": {"y": 4},
+          "text_literal": true,
+          "font_enum": 3,
+          "text_scale": 0.375,
+          "text_align_mode": 8,
+          "text_align_x": 8,
+          "text_align_y": 0,
+          "fore_color": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "style": 0,
+          "background": "",
+          "back_color": [
+            0,
+            0,
+            0,
+            0.25
+          ]
+        }
+      },
+      {
+        "index": 64,
+        "fields": {
+          "vis_exp": "1",
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_leave_lobby\";"
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "item_copies": [
+      {"index": 27,"fields": {"name": "lobby_member_0","vis_exp": "op 35 s:75695f6c6f6262795f6d656d6265725f305f76697369626c65 op 1","rect": {"x": -272,"y": 28,"w": 272,"h": 20},"background": "white","style": 1,"back_color": [0,0,0,0.25],"text_key": "","text_exp": "op 38 s:75695f6c6f6262795f6d656d6265725f30 op 1","text_literal": true,"font_enum": 3,"text_scale": 0.375,"text_align_mode": 8,"text_align_x": 8,"fore_color": [1,1,1,1]}},
+      {"index": 27,"fields": {"name": "lobby_member_1","vis_exp": "op 35 s:75695f6c6f6262795f6d656d6265725f315f76697369626c65 op 1","rect": {"x": -272,"y": 48,"w": 272,"h": 20},"background": "white","style": 1,"back_color": [0,0,0,0.25],"text_key": "","text_exp": "op 38 s:75695f6c6f6262795f6d656d6265725f31 op 1","text_literal": true,"font_enum": 3,"text_scale": 0.375,"text_align_mode": 8,"text_align_x": 8,"fore_color": [1,1,1,1]}},
+      {"index": 27,"fields": {"name": "lobby_member_2","vis_exp": "op 35 s:75695f6c6f6262795f6d656d6265725f325f76697369626c65 op 1","rect": {"x": -272,"y": 68,"w": 272,"h": 20},"background": "white","style": 1,"back_color": [0,0,0,0.25],"text_key": "","text_exp": "op 38 s:75695f6c6f6262795f6d656d6265725f32 op 1","text_literal": true,"font_enum": 3,"text_scale": 0.375,"text_align_mode": 8,"text_align_x": 8,"fore_color": [1,1,1,1]}},
+      {"index": 27,"fields": {"name": "lobby_member_3","vis_exp": "op 35 s:75695f6c6f6262795f6d656d6265725f335f76697369626c65 op 1","rect": {"x": -272,"y": 88,"w": 272,"h": 20},"background": "white","style": 1,"back_color": [0,0,0,0.25],"text_key": "","text_exp": "op 38 s:75695f6c6f6262795f6d656d6265725f33 op 1","text_literal": true,"font_enum": 3,"text_scale": 0.375,"text_align_mode": 8,"text_align_x": 8,"fore_color": [1,1,1,1]}},
+      {"index": 27,"fields": {"name": "lobby_member_4","vis_exp": "op 35 s:75695f6c6f6262795f6d656d6265725f345f76697369626c65 op 1","rect": {"x": -272,"y": 108,"w": 272,"h": 20},"background": "white","style": 1,"back_color": [0,0,0,0.25],"text_key": "","text_exp": "op 38 s:75695f6c6f6262795f6d656d6265725f34 op 1","text_literal": true,"font_enum": 3,"text_scale": 0.375,"text_align_mode": 8,"text_align_x": 8,"fore_color": [1,1,1,1]}},
+      {"index": 27,"fields": {"name": "lobby_member_5","vis_exp": "op 35 s:75695f6c6f6262795f6d656d6265725f355f76697369626c65 op 1","rect": {"x": -272,"y": 128,"w": 272,"h": 20},"background": "white","style": 1,"back_color": [0,0,0,0.25],"text_key": "","text_exp": "op 38 s:75695f6c6f6262795f6d656d6265725f35 op 1","text_literal": true,"font_enum": 3,"text_scale": 0.375,"text_align_mode": 8,"text_align_x": 8,"fore_color": [1,1,1,1]}},
+      {"index": 27,"fields": {"name": "lobby_member_6","vis_exp": "op 35 s:75695f6c6f6262795f6d656d6265725f365f76697369626c65 op 1","rect": {"x": -272,"y": 148,"w": 272,"h": 20},"background": "white","style": 1,"back_color": [0,0,0,0.25],"text_key": "","text_exp": "op 38 s:75695f6c6f6262795f6d656d6265725f36 op 1","text_literal": true,"font_enum": 3,"text_scale": 0.375,"text_align_mode": 8,"text_align_x": 8,"fore_color": [1,1,1,1]}},
+      {"index": 27,"fields": {"name": "lobby_member_7","vis_exp": "op 35 s:75695f6c6f6262795f6d656d6265725f375f76697369626c65 op 1","rect": {"x": -272,"y": 168,"w": 272,"h": 20},"background": "white","style": 1,"back_color": [0,0,0,0.25],"text_key": "","text_exp": "op 38 s:75695f6c6f6262795f6d656d6265725f37 op 1","text_literal": true,"font_enum": 3,"text_scale": 0.375,"text_align_mode": 8,"text_align_x": 8,"fore_color": [1,1,1,1]}},
+      {"index": 27,"fields": {"name": "lobby_member_8","vis_exp": "op 35 s:75695f6c6f6262795f6d656d6265725f385f76697369626c65 op 1","rect": {"x": -272,"y": 188,"w": 272,"h": 20},"background": "white","style": 1,"back_color": [0,0,0,0.25],"text_key": "","text_exp": "op 38 s:75695f6c6f6262795f6d656d6265725f38 op 1","text_literal": true,"font_enum": 3,"text_scale": 0.375,"text_align_mode": 8,"text_align_x": 8,"fore_color": [1,1,1,1]}},
+      {"index": 27,"fields": {"name": "lobby_member_9","vis_exp": "op 35 s:75695f6c6f6262795f6d656d6265725f395f76697369626c65 op 1","rect": {"x": -272,"y": 208,"w": 272,"h": 20},"background": "white","style": 1,"back_color": [0,0,0,0.25],"text_key": "","text_exp": "op 38 s:75695f6c6f6262795f6d656d6265725f39 op 1","text_literal": true,"font_enum": 3,"text_scale": 0.375,"text_align_mode": 8,"text_align_x": 8,"fore_color": [1,1,1,1]}},
+      {"index": 27,"fields": {"name": "lobby_member_10","vis_exp": "op 35 s:75695f6c6f6262795f6d656d6265725f31305f76697369626c65 op 1","rect": {"x": -272,"y": 228,"w": 272,"h": 20},"background": "white","style": 1,"back_color": [0,0,0,0.25],"text_key": "","text_exp": "op 38 s:75695f6c6f6262795f6d656d6265725f3130 op 1","text_literal": true,"font_enum": 3,"text_scale": 0.375,"text_align_mode": 8,"text_align_x": 8,"fore_color": [1,1,1,1]}},
+      {"index": 27,"fields": {"name": "lobby_member_11","vis_exp": "op 35 s:75695f6c6f6262795f6d656d6265725f31315f76697369626c65 op 1","rect": {"x": -272,"y": 248,"w": 272,"h": 20},"background": "white","style": 1,"back_color": [0,0,0,0.25],"text_key": "","text_exp": "op 38 s:75695f6c6f6262795f6d656d6265725f3131 op 1","text_literal": true,"font_enum": 3,"text_scale": 0.375,"text_align_mode": 8,"text_align_x": 8,"fore_color": [1,1,1,1]}},
+      {"index": 27,"fields": {"name": "lobby_member_12","vis_exp": "op 35 s:75695f6c6f6262795f6d656d6265725f31325f76697369626c65 op 1","rect": {"x": -272,"y": 268,"w": 272,"h": 20},"background": "white","style": 1,"back_color": [0,0,0,0.25],"text_key": "","text_exp": "op 38 s:75695f6c6f6262795f6d656d6265725f3132 op 1","text_literal": true,"font_enum": 3,"text_scale": 0.375,"text_align_mode": 8,"text_align_x": 8,"fore_color": [1,1,1,1]}},
+      {"index": 27,"fields": {"name": "lobby_member_13","vis_exp": "op 35 s:75695f6c6f6262795f6d656d6265725f31335f76697369626c65 op 1","rect": {"x": -272,"y": 288,"w": 272,"h": 20},"background": "white","style": 1,"back_color": [0,0,0,0.25],"text_key": "","text_exp": "op 38 s:75695f6c6f6262795f6d656d6265725f3133 op 1","text_literal": true,"font_enum": 3,"text_scale": 0.375,"text_align_mode": 8,"text_align_x": 8,"fore_color": [1,1,1,1]}},
+      {"index": 27,"fields": {"name": "lobby_member_14","vis_exp": "op 35 s:75695f6c6f6262795f6d656d6265725f31345f76697369626c65 op 1","rect": {"x": -272,"y": 308,"w": 272,"h": 20},"background": "white","style": 1,"back_color": [0,0,0,0.25],"text_key": "","text_exp": "op 38 s:75695f6c6f6262795f6d656d6265725f3134 op 1","text_literal": true,"font_enum": 3,"text_scale": 0.375,"text_align_mode": 8,"text_align_x": 8,"fore_color": [1,1,1,1]}},
+      {"index": 27,"fields": {"name": "lobby_member_15","vis_exp": "op 35 s:75695f6c6f6262795f6d656d6265725f31355f76697369626c65 op 1","rect": {"x": -272,"y": 328,"w": 272,"h": 20},"background": "white","style": 1,"back_color": [0,0,0,0.25],"text_key": "","text_exp": "op 38 s:75695f6c6f6262795f6d656d6265725f3135 op 1","text_literal": true,"font_enum": 3,"text_scale": 0.375,"text_align_mode": 8,"text_align_x": 8,"fore_color": [1,1,1,1]}},
+      {"index": 27,"fields": {"name": "lobby_member_16","vis_exp": "op 35 s:75695f6c6f6262795f6d656d6265725f31365f76697369626c65 op 1","rect": {"x": -272,"y": 348,"w": 272,"h": 20},"background": "white","style": 1,"back_color": [0,0,0,0.25],"text_key": "","text_exp": "op 38 s:75695f6c6f6262795f6d656d6265725f3136 op 1","text_literal": true,"font_enum": 3,"text_scale": 0.375,"text_align_mode": 8,"text_align_x": 8,"fore_color": [1,1,1,1]}},
+      {"index": 27,"fields": {"name": "lobby_member_17","vis_exp": "op 35 s:75695f6c6f6262795f6d656d6265725f31375f76697369626c65 op 1","rect": {"x": -272,"y": 368,"w": 272,"h": 20},"background": "white","style": 1,"back_color": [0,0,0,0.25],"text_key": "","text_exp": "op 38 s:75695f6c6f6262795f6d656d6265725f3137 op 1","text_literal": true,"font_enum": 3,"text_scale": 0.375,"text_align_mode": 8,"text_align_x": 8,"fore_color": [1,1,1,1]}},
+      {
+        "index": 27,
+        "fields": {
+          "name": "lobby_prestige", "vis_exp": "1", "rect": {"x": -46, "y": 30, "w": 16, "h": 16},
+          "background": "cardicon_prestige_1", "style": 3,
+          "text_key": "", "text_exp": "", "fore_color": [1, 1, 1, 1]
+        }
+      },
+      {
+        "index": 27,
+        "fields": {
+          "name": "lobby_rank", "vis_exp": "1", "rect": {"x": -28, "y": 28, "w": 20, "h": 20},
+          "background": "", "style": 0, "text_key": "70", "text_exp": "",
+          "text_literal": true, "font_enum": 3, "text_scale": 0.375,
+          "fore_color": [1, 1, 1, 1], "text_align_mode": 10, "text_align_x": 0
+        }
+      },
+      {
+        "index": 12,
+        "fields": {
+          "rect": {
+            "y": -68,
+            "h": 32
+          },
+          "text_exp": "op 38 s:75695f66726f6e74656e645f737461747573 op 1",
+          "text_literal": true,
+          "background": "",
+          "style": 0,
+          "text_scale": 0.3,
+          "text_align_mode": 8,
+          "text_align_x": 0,
+          "fore_color": [
+            1,
+            0.75,
+            0.4,
+            1
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "lobby_game_setup",
+    "base": "popup_gamesetup",
+    "fields": {
+      "float_exp": [
+        [
+          1,
+          "38"
+        ],
+        [
+          3,
+          "124"
+        ]
+      ],
+      "handlers": {
+        "open": [
+          {
+            "Script": "focusFirst;"
+          }
+        ],
+        "close": [],
+        "close_request": [],
+        "esc": [
+          {
+            "Script": "close self;"
+          }
+        ]
+      }
+    },
+    "item_overrides": [
+      {
+        "index": 19,
+        "fields": {
+          "disabled_exp": "0",
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; open game_map_select;"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "index": 20,
+        "fields": {
+          "disabled_exp": "0",
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; open game_mode_select;"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "index": 21,
+        "fields": {
+          "disabled_exp": "0"
+        }
+      },
+      {
+        "index": 22,
+        "fields": {
+          "text_key": "",
+          "text_exp": "op 38 s:75695f6c6f6262795f70726976616379 op 1",
+          "vis_exp": "1",
+          "disabled_exp": "0",
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_lobby_privacy\";"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "index": 23,
+        "fields": {
+          "rect": {
+            "y": 104
+          },
+          "text_key": "@PLATFORM_BACK_CAPS",
+          "vis_exp": "1",
+          "disabled_exp": "0",
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; close self;"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "game_map_select",
+    "base": "settings_map",
+    "fields": {
+      "handlers": {
+        "open": [
+          {
+            "Script": "exec \"ui_maps\"; focusFirst;"
+          }
+        ],
+        "close": [],
+        "close_request": [],
+        "esc": [
+          {
+            "Script": "close self;"
+          }
+        ]
+      }
+    },
+    "item_overrides": [
+      {
+        "index": 15,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 26,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 27,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 28,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 29,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 30,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 31,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 33,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 38,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 39,
+        "fields": {
+          "vis_exp": "0"
+        }
+      },
+      {
+        "index": 16,
+        "fields": {
+          "name": "map_row_0",
+          "rect": {
+            "x": 140,
+            "y": 28,
+            "w": 200
+          },
+          "text_align_x": -8,
+          "text_key": "",
+          "text_exp": "op 38 s:75695f6d61705f30 op 1",
+          "vis_exp": "op 38 s:75695f6d61705f30 op 1 op 13 s:",
+          "disabled_exp": "0",
+          "dvar_flags": 0,
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_select_map 0\";"
+              }
+            ],
+            "focus": [
+              {
+                "Script": "play mouse_over; setItemColor self backcolor 0 0 0 1; exec \"ui_map_hover 0\";"
+              }
+            ],
+            "leave_focus": [
+              {
+                "Script": "setItemColor self backcolor 0 0 0 0;"
+              }
+            ]
+          },
+          "background": "white",
+          "text_align_mode": 10
+        }
+      },
+      {
+        "index": 17,
+        "fields": {
+          "name": "map_row_1",
+          "rect": {
+            "x": 140,
+            "y": 48,
+            "w": 200
+          },
+          "text_align_x": -8,
+          "text_key": "",
+          "text_exp": "op 38 s:75695f6d61705f31 op 1",
+          "vis_exp": "op 38 s:75695f6d61705f31 op 1 op 13 s:",
+          "disabled_exp": "0",
+          "dvar_flags": 0,
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_select_map 1\";"
+              }
+            ],
+            "focus": [
+              {
+                "Script": "play mouse_over; setItemColor self backcolor 0 0 0 1; exec \"ui_map_hover 1\";"
+              }
+            ],
+            "leave_focus": [
+              {
+                "Script": "setItemColor self backcolor 0 0 0 0;"
+              }
+            ]
+          },
+          "background": "white",
+          "text_align_mode": 10
+        }
+      },
+      {
+        "index": 18,
+        "fields": {
+          "name": "map_row_2",
+          "rect": {
+            "x": 140,
+            "y": 68,
+            "w": 200
+          },
+          "text_align_x": -8,
+          "text_key": "",
+          "text_exp": "op 38 s:75695f6d61705f32 op 1",
+          "vis_exp": "op 38 s:75695f6d61705f32 op 1 op 13 s:",
+          "disabled_exp": "0",
+          "dvar_flags": 0,
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_select_map 2\";"
+              }
+            ],
+            "focus": [
+              {
+                "Script": "play mouse_over; setItemColor self backcolor 0 0 0 1; exec \"ui_map_hover 2\";"
+              }
+            ],
+            "leave_focus": [
+              {
+                "Script": "setItemColor self backcolor 0 0 0 0;"
+              }
+            ]
+          },
+          "background": "white",
+          "text_align_mode": 10
+        }
+      },
+      {
+        "index": 19,
+        "fields": {
+          "name": "map_row_3",
+          "rect": {
+            "x": 140,
+            "y": 88,
+            "w": 200
+          },
+          "text_align_x": -8,
+          "text_key": "",
+          "text_exp": "op 38 s:75695f6d61705f33 op 1",
+          "vis_exp": "op 38 s:75695f6d61705f33 op 1 op 13 s:",
+          "disabled_exp": "0",
+          "dvar_flags": 0,
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_select_map 3\";"
+              }
+            ],
+            "focus": [
+              {
+                "Script": "play mouse_over; setItemColor self backcolor 0 0 0 1; exec \"ui_map_hover 3\";"
+              }
+            ],
+            "leave_focus": [
+              {
+                "Script": "setItemColor self backcolor 0 0 0 0;"
+              }
+            ]
+          },
+          "background": "white",
+          "text_align_mode": 10
+        }
+      },
+      {
+        "index": 20,
+        "fields": {
+          "name": "map_row_4",
+          "rect": {
+            "x": 140,
+            "y": 108,
+            "w": 200
+          },
+          "text_align_x": -8,
+          "text_key": "",
+          "text_exp": "op 38 s:75695f6d61705f34 op 1",
+          "vis_exp": "op 38 s:75695f6d61705f34 op 1 op 13 s:",
+          "disabled_exp": "0",
+          "dvar_flags": 0,
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_select_map 4\";"
+              }
+            ],
+            "focus": [
+              {
+                "Script": "play mouse_over; setItemColor self backcolor 0 0 0 1; exec \"ui_map_hover 4\";"
+              }
+            ],
+            "leave_focus": [
+              {
+                "Script": "setItemColor self backcolor 0 0 0 0;"
+              }
+            ]
+          },
+          "background": "white",
+          "text_align_mode": 10
+        }
+      },
+      {
+        "index": 21,
+        "fields": {
+          "name": "map_row_5",
+          "rect": {
+            "x": 140,
+            "y": 128,
+            "w": 200
+          },
+          "text_align_x": -8,
+          "text_key": "",
+          "text_exp": "op 38 s:75695f6d61705f35 op 1",
+          "vis_exp": "op 38 s:75695f6d61705f35 op 1 op 13 s:",
+          "disabled_exp": "0",
+          "dvar_flags": 0,
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_select_map 5\";"
+              }
+            ],
+            "focus": [
+              {
+                "Script": "play mouse_over; setItemColor self backcolor 0 0 0 1; exec \"ui_map_hover 5\";"
+              }
+            ],
+            "leave_focus": [
+              {
+                "Script": "setItemColor self backcolor 0 0 0 0;"
+              }
+            ]
+          },
+          "background": "white",
+          "text_align_mode": 10
+        }
+      },
+      {
+        "index": 22,
+        "fields": {
+          "name": "map_row_6",
+          "rect": {
+            "x": 140,
+            "y": 148,
+            "w": 200
+          },
+          "text_align_x": -8,
+          "text_key": "",
+          "text_exp": "op 38 s:75695f6d61705f36 op 1",
+          "vis_exp": "op 38 s:75695f6d61705f36 op 1 op 13 s:",
+          "disabled_exp": "0",
+          "dvar_flags": 0,
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_select_map 6\";"
+              }
+            ],
+            "focus": [
+              {
+                "Script": "play mouse_over; setItemColor self backcolor 0 0 0 1; exec \"ui_map_hover 6\";"
+              }
+            ],
+            "leave_focus": [
+              {
+                "Script": "setItemColor self backcolor 0 0 0 0;"
+              }
+            ]
+          },
+          "background": "white",
+          "text_align_mode": 10
+        }
+      },
+      {
+        "index": 23,
+        "fields": {
+          "name": "map_row_7",
+          "rect": {
+            "x": 140,
+            "y": 168,
+            "w": 200
+          },
+          "text_align_x": -8,
+          "text_key": "",
+          "text_exp": "op 38 s:75695f6d61705f37 op 1",
+          "vis_exp": "op 38 s:75695f6d61705f37 op 1 op 13 s:",
+          "disabled_exp": "0",
+          "dvar_flags": 0,
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_select_map 7\";"
+              }
+            ],
+            "focus": [
+              {
+                "Script": "play mouse_over; setItemColor self backcolor 0 0 0 1; exec \"ui_map_hover 7\";"
+              }
+            ],
+            "leave_focus": [
+              {
+                "Script": "setItemColor self backcolor 0 0 0 0;"
+              }
+            ]
+          },
+          "background": "white",
+          "text_align_mode": 10
+        }
+      },
+      {
+        "index": 24,
+        "fields": {
+          "name": "map_row_8",
+          "rect": {
+            "x": 140,
+            "y": 188,
+            "w": 200
+          },
+          "text_align_x": -8,
+          "text_key": "",
+          "text_exp": "op 38 s:75695f6d61705f38 op 1",
+          "vis_exp": "op 38 s:75695f6d61705f38 op 1 op 13 s:",
+          "disabled_exp": "0",
+          "dvar_flags": 0,
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_select_map 8\";"
+              }
+            ],
+            "focus": [
+              {
+                "Script": "play mouse_over; setItemColor self backcolor 0 0 0 1; exec \"ui_map_hover 8\";"
+              }
+            ],
+            "leave_focus": [
+              {
+                "Script": "setItemColor self backcolor 0 0 0 0;"
+              }
+            ]
+          },
+          "background": "white",
+          "text_align_mode": 10
+        }
+      },
+      {
+        "index": 25,
+        "fields": {
+          "name": "map_row_9",
+          "rect": {
+            "x": 140,
+            "y": 208,
+            "w": 200
+          },
+          "text_align_x": -8,
+          "text_key": "",
+          "text_exp": "op 38 s:75695f6d61705f39 op 1",
+          "vis_exp": "op 38 s:75695f6d61705f39 op 1 op 13 s:",
+          "disabled_exp": "0",
+          "dvar_flags": 0,
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_select_map 9\";"
+              }
+            ],
+            "focus": [
+              {
+                "Script": "play mouse_over; setItemColor self backcolor 0 0 0 1; exec \"ui_map_hover 9\";"
+              }
+            ],
+            "leave_focus": [
+              {
+                "Script": "setItemColor self backcolor 0 0 0 0;"
+              }
+            ]
+          },
+          "background": "white",
+          "text_align_mode": 10
+        }
+      },
+      {
+        "index": 32,
+        "fields": {
+          "vis_exp": "1",
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; close self;"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "index": 35,
+        "fields": {
+          "material_exp": "op 38 s:75695f6d61705f70726576696577 op 1"
+        }
+      },
+      {
+        "index": 36,
+        "fields": {
+          "text_key": "",
+          "text_exp": "op 38 s:75695f6d61705f707265766965775f7469746c65 op 1"
+        }
+      },
+      {
+        "index": 37,
+        "fields": {
+          "text_key": "",
+          "text_exp": "op 38 s:75695f66726f6e74656e645f737461747573 op 1",
+          "text_literal": true
+        }
+      }
+    ],
+    "item_copies": [
+      {
+        "index": 16,
+        "fields": {
+          "name": "map_pack_0",
+          "rect": {
+            "x": -64,
+            "y": 28,
+            "w": 200
+          },
+          "text_key": "",
+          "text_exp": "op 38 s:75695f6d61705f7061636b5f30 op 1",
+          "text_align_mode": 8,
+          "text_align_x": 68,
+          "vis_exp": "op 38 s:75695f6d61705f7061636b5f30 op 1 op 13 s:",
+          "disabled_exp": "0",
+          "dvar_flags": 0,
+          "float_exp": [
+            [
+              4,
+              "op 37 s:75695f6d61705f7061636b5f74696e745f30 op 1"
+            ],
+            [
+              6,
+              "op 37 s:75695f6d61705f7061636b5f74696e745f30 op 1"
+            ]
+          ],
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_map_pack 0\";"
+              }
+            ],
+            "focus": [
+              {
+                "Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"
+              }
+            ],
+            "leave_focus": [
+              {
+                "Script": "setItemColor self backcolor 0 0 0 0;"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "index": 16,
+        "fields": {
+          "name": "map_pack_1",
+          "rect": {
+            "x": -64,
+            "y": 48,
+            "w": 200
+          },
+          "text_key": "",
+          "text_exp": "op 38 s:75695f6d61705f7061636b5f31 op 1",
+          "text_align_mode": 8,
+          "text_align_x": 68,
+          "vis_exp": "op 38 s:75695f6d61705f7061636b5f31 op 1 op 13 s:",
+          "disabled_exp": "0",
+          "dvar_flags": 0,
+          "float_exp": [
+            [
+              4,
+              "op 37 s:75695f6d61705f7061636b5f74696e745f31 op 1"
+            ],
+            [
+              6,
+              "op 37 s:75695f6d61705f7061636b5f74696e745f31 op 1"
+            ]
+          ],
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_map_pack 1\";"
+              }
+            ],
+            "focus": [
+              {
+                "Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"
+              }
+            ],
+            "leave_focus": [
+              {
+                "Script": "setItemColor self backcolor 0 0 0 0;"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "index": 16,
+        "fields": {
+          "name": "map_pack_2",
+          "rect": {
+            "x": -64,
+            "y": 68,
+            "w": 200
+          },
+          "text_key": "",
+          "text_exp": "op 38 s:75695f6d61705f7061636b5f32 op 1",
+          "text_align_mode": 8,
+          "text_align_x": 68,
+          "vis_exp": "op 38 s:75695f6d61705f7061636b5f32 op 1 op 13 s:",
+          "disabled_exp": "0",
+          "dvar_flags": 0,
+          "float_exp": [
+            [
+              4,
+              "op 37 s:75695f6d61705f7061636b5f74696e745f32 op 1"
+            ],
+            [
+              6,
+              "op 37 s:75695f6d61705f7061636b5f74696e745f32 op 1"
+            ]
+          ],
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_map_pack 2\";"
+              }
+            ],
+            "focus": [
+              {
+                "Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"
+              }
+            ],
+            "leave_focus": [
+              {
+                "Script": "setItemColor self backcolor 0 0 0 0;"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "index": 16,
+        "fields": {
+          "name": "map_pack_3",
+          "rect": {
+            "x": -64,
+            "y": 88,
+            "w": 200
+          },
+          "text_key": "",
+          "text_exp": "op 38 s:75695f6d61705f7061636b5f33 op 1",
+          "text_align_mode": 8,
+          "text_align_x": 68,
+          "vis_exp": "op 38 s:75695f6d61705f7061636b5f33 op 1 op 13 s:",
+          "disabled_exp": "0",
+          "dvar_flags": 0,
+          "float_exp": [
+            [
+              4,
+              "op 37 s:75695f6d61705f7061636b5f74696e745f33 op 1"
+            ],
+            [
+              6,
+              "op 37 s:75695f6d61705f7061636b5f74696e745f33 op 1"
+            ]
+          ],
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_map_pack 3\";"
+              }
+            ],
+            "focus": [
+              {
+                "Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"
+              }
+            ],
+            "leave_focus": [
+              {
+                "Script": "setItemColor self backcolor 0 0 0 0;"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "index": 16,
+        "fields": {
+          "name": "map_pack_4",
+          "rect": {
+            "x": -64,
+            "y": 108,
+            "w": 200
+          },
+          "text_key": "",
+          "text_exp": "op 38 s:75695f6d61705f7061636b5f34 op 1",
+          "text_align_mode": 8,
+          "text_align_x": 68,
+          "vis_exp": "op 38 s:75695f6d61705f7061636b5f34 op 1 op 13 s:",
+          "disabled_exp": "0",
+          "dvar_flags": 0,
+          "float_exp": [
+            [
+              4,
+              "op 37 s:75695f6d61705f7061636b5f74696e745f34 op 1"
+            ],
+            [
+              6,
+              "op 37 s:75695f6d61705f7061636b5f74696e745f34 op 1"
+            ]
+          ],
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_map_pack 4\";"
+              }
+            ],
+            "focus": [
+              {
+                "Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"
+              }
+            ],
+            "leave_focus": [
+              {
+                "Script": "setItemColor self backcolor 0 0 0 0;"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "index": 16,
+        "fields": {
+          "name": "map_pack_5",
+          "rect": {
+            "x": -64,
+            "y": 128,
+            "w": 200
+          },
+          "text_key": "",
+          "text_exp": "op 38 s:75695f6d61705f7061636b5f35 op 1",
+          "text_align_mode": 8,
+          "text_align_x": 68,
+          "vis_exp": "op 38 s:75695f6d61705f7061636b5f35 op 1 op 13 s:",
+          "disabled_exp": "0",
+          "dvar_flags": 0,
+          "float_exp": [
+            [
+              4,
+              "op 37 s:75695f6d61705f7061636b5f74696e745f35 op 1"
+            ],
+            [
+              6,
+              "op 37 s:75695f6d61705f7061636b5f74696e745f35 op 1"
+            ]
+          ],
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_map_pack 5\";"
+              }
+            ],
+            "focus": [
+              {
+                "Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"
+              }
+            ],
+            "leave_focus": [
+              {
+                "Script": "setItemColor self backcolor 0 0 0 0;"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "index": 16,
+        "fields": {
+          "name": "map_pack_6",
+          "rect": {
+            "x": -64,
+            "y": 148,
+            "w": 200
+          },
+          "text_key": "",
+          "text_exp": "op 38 s:75695f6d61705f7061636b5f36 op 1",
+          "text_align_mode": 8,
+          "text_align_x": 68,
+          "vis_exp": "op 38 s:75695f6d61705f7061636b5f36 op 1 op 13 s:",
+          "disabled_exp": "0",
+          "dvar_flags": 0,
+          "float_exp": [
+            [
+              4,
+              "op 37 s:75695f6d61705f7061636b5f74696e745f36 op 1"
+            ],
+            [
+              6,
+              "op 37 s:75695f6d61705f7061636b5f74696e745f36 op 1"
+            ]
+          ],
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_map_pack 6\";"
+              }
+            ],
+            "focus": [
+              {
+                "Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"
+              }
+            ],
+            "leave_focus": [
+              {
+                "Script": "setItemColor self backcolor 0 0 0 0;"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "index": 16,
+        "fields": {
+          "name": "map_pack_7",
+          "rect": {
+            "x": -64,
+            "y": 168,
+            "w": 200
+          },
+          "text_key": "",
+          "text_exp": "op 38 s:75695f6d61705f7061636b5f37 op 1",
+          "text_align_mode": 8,
+          "text_align_x": 68,
+          "vis_exp": "op 38 s:75695f6d61705f7061636b5f37 op 1 op 13 s:",
+          "disabled_exp": "0",
+          "dvar_flags": 0,
+          "float_exp": [
+            [
+              4,
+              "op 37 s:75695f6d61705f7061636b5f74696e745f37 op 1"
+            ],
+            [
+              6,
+              "op 37 s:75695f6d61705f7061636b5f74696e745f37 op 1"
+            ]
+          ],
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_map_pack 7\";"
+              }
+            ],
+            "focus": [
+              {
+                "Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"
+              }
+            ],
+            "leave_focus": [
+              {
+                "Script": "setItemColor self backcolor 0 0 0 0;"
+              }
+            ]
+          }
+        }
+      },
+      {"index": 16, "fields": {"name": "map_pack_8", "rect": {"x": -64, "y": 188, "w": 200}, "text_key": "", "text_exp": "op 38 s:75695f6d61705f7061636b5f38 op 1", "text_align_mode": 8, "text_align_x": 68, "vis_exp": "op 38 s:75695f6d61705f7061636b5f38 op 1 op 13 s:", "disabled_exp": "0", "dvar_flags": 0, "float_exp": [[4, "op 37 s:75695f6d61705f7061636b5f74696e745f38 op 1"], [6, "op 37 s:75695f6d61705f7061636b5f74696e745f38 op 1"]], "handlers": {"action": [{"Script": "play mouse_click; exec \"ui_map_pack 8\";"}], "focus": [{"Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"}], "leave_focus": [{"Script": "setItemColor self backcolor 0 0 0 0;"}]}}},
+      {"index": 16, "fields": {"name": "map_pack_9", "rect": {"x": -64, "y": 208, "w": 200}, "text_key": "", "text_exp": "op 38 s:75695f6d61705f7061636b5f39 op 1", "text_align_mode": 8, "text_align_x": 68, "vis_exp": "op 38 s:75695f6d61705f7061636b5f39 op 1 op 13 s:", "disabled_exp": "0", "dvar_flags": 0, "float_exp": [[4, "op 37 s:75695f6d61705f7061636b5f74696e745f39 op 1"], [6, "op 37 s:75695f6d61705f7061636b5f74696e745f39 op 1"]], "handlers": {"action": [{"Script": "play mouse_click; exec \"ui_map_pack 9\";"}], "focus": [{"Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"}], "leave_focus": [{"Script": "setItemColor self backcolor 0 0 0 0;"}]}}},
+      {"index": 16, "fields": {"name": "map_pack_10", "rect": {"x": -64, "y": 228, "w": 200}, "text_key": "", "text_exp": "op 38 s:75695f6d61705f7061636b5f3130 op 1", "text_align_mode": 8, "text_align_x": 68, "vis_exp": "op 38 s:75695f6d61705f7061636b5f3130 op 1 op 13 s:", "disabled_exp": "0", "dvar_flags": 0, "float_exp": [[4, "op 37 s:75695f6d61705f7061636b5f74696e745f3130 op 1"], [6, "op 37 s:75695f6d61705f7061636b5f74696e745f3130 op 1"]], "handlers": {"action": [{"Script": "play mouse_click; exec \"ui_map_pack 10\";"}], "focus": [{"Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"}], "leave_focus": [{"Script": "setItemColor self backcolor 0 0 0 0;"}]}}},
+      {"index": 16, "fields": {"name": "map_pack_11", "rect": {"x": -64, "y": 248, "w": 200}, "text_key": "", "text_exp": "op 38 s:75695f6d61705f7061636b5f3131 op 1", "text_align_mode": 8, "text_align_x": 68, "vis_exp": "op 38 s:75695f6d61705f7061636b5f3131 op 1 op 13 s:", "disabled_exp": "0", "dvar_flags": 0, "float_exp": [[4, "op 37 s:75695f6d61705f7061636b5f74696e745f3131 op 1"], [6, "op 37 s:75695f6d61705f7061636b5f74696e745f3131 op 1"]], "handlers": {"action": [{"Script": "play mouse_click; exec \"ui_map_pack 11\";"}], "focus": [{"Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"}], "leave_focus": [{"Script": "setItemColor self backcolor 0 0 0 0;"}]}}},
+      {"index": 16, "fields": {"name": "map_pack_12", "rect": {"x": -64, "y": 268, "w": 200}, "text_key": "", "text_exp": "op 38 s:75695f6d61705f7061636b5f3132 op 1", "text_align_mode": 8, "text_align_x": 68, "vis_exp": "op 38 s:75695f6d61705f7061636b5f3132 op 1 op 13 s:", "disabled_exp": "0", "dvar_flags": 0, "float_exp": [[4, "op 37 s:75695f6d61705f7061636b5f74696e745f3132 op 1"], [6, "op 37 s:75695f6d61705f7061636b5f74696e745f3132 op 1"]], "handlers": {"action": [{"Script": "play mouse_click; exec \"ui_map_pack 12\";"}], "focus": [{"Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"}], "leave_focus": [{"Script": "setItemColor self backcolor 0 0 0 0;"}]}}},
+      {"index": 16, "fields": {"name": "map_pack_13", "rect": {"x": -64, "y": 288, "w": 200}, "text_key": "", "text_exp": "op 38 s:75695f6d61705f7061636b5f3133 op 1", "text_align_mode": 8, "text_align_x": 68, "vis_exp": "op 38 s:75695f6d61705f7061636b5f3133 op 1 op 13 s:", "disabled_exp": "0", "dvar_flags": 0, "float_exp": [[4, "op 37 s:75695f6d61705f7061636b5f74696e745f3133 op 1"], [6, "op 37 s:75695f6d61705f7061636b5f74696e745f3133 op 1"]], "handlers": {"action": [{"Script": "play mouse_click; exec \"ui_map_pack 13\";"}], "focus": [{"Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"}], "leave_focus": [{"Script": "setItemColor self backcolor 0 0 0 0;"}]}}},
+      {"index": 16, "fields": {"name": "map_pack_14", "rect": {"x": -64, "y": 308, "w": 200}, "text_key": "", "text_exp": "op 38 s:75695f6d61705f7061636b5f3134 op 1", "text_align_mode": 8, "text_align_x": 68, "vis_exp": "op 38 s:75695f6d61705f7061636b5f3134 op 1 op 13 s:", "disabled_exp": "0", "dvar_flags": 0, "float_exp": [[4, "op 37 s:75695f6d61705f7061636b5f74696e745f3134 op 1"], [6, "op 37 s:75695f6d61705f7061636b5f74696e745f3134 op 1"]], "handlers": {"action": [{"Script": "play mouse_click; exec \"ui_map_pack 14\";"}], "focus": [{"Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"}], "leave_focus": [{"Script": "setItemColor self backcolor 0 0 0 0;"}]}}},
+      {"index": 16, "fields": {"name": "map_pack_15", "rect": {"x": -64, "y": 328, "w": 200}, "text_key": "", "text_exp": "op 38 s:75695f6d61705f7061636b5f3135 op 1", "text_align_mode": 8, "text_align_x": 68, "vis_exp": "op 38 s:75695f6d61705f7061636b5f3135 op 1 op 13 s:", "disabled_exp": "0", "dvar_flags": 0, "float_exp": [[4, "op 37 s:75695f6d61705f7061636b5f74696e745f3135 op 1"], [6, "op 37 s:75695f6d61705f7061636b5f74696e745f3135 op 1"]], "handlers": {"action": [{"Script": "play mouse_click; exec \"ui_map_pack 15\";"}], "focus": [{"Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"}], "leave_focus": [{"Script": "setItemColor self backcolor 0 0 0 0;"}]}}}
+    ]
+  },
+  {
+    "name": "find_lobbies",
+    "fullscreen": 1,
+    "rect": {"x": 0, "y": 0, "w": 640, "h": 480, "horz_align": 4, "vert_align": 4},
+    "handlers": {"open": [{"Script": "exec \"ui_browser_refresh\"; focusFirst;"}], "esc": [{"Script": "close self;"}]},
+    "items": [
+      {"name": "background", "background": "mw2_main_background", "rect": {"x": 0, "y": 0, "w": 640, "h": 480, "horz_align": 4, "vert_align": 4}, "fore_color": [1, 1, 1, 1], "static_flags": 1048576},
+      {"name": "clouds", "background": "mw2_main_cloud_overlay", "rect": {"x": -107, "y": 0, "w": 1708, "h": 480, "horz_align": 0, "vert_align": 0}, "fore_color": [1, 1, 1, 0.45], "static_flags": 1048576, "float_exp": [[0, "-107 op 6 op 34 op 1 op 4 60000 op 3 60000 op 2 854"]]},
+      {"name": "glow", "background": "mockup_bg_glow", "rect": {"x": 0, "y": 0, "w": 640, "h": 480, "horz_align": 4, "vert_align": 4}, "fore_color": [1, 1, 1, 0.5], "static_flags": 1048576},
+      {"name": "title", "text_key": "FIND LOBBIES", "rect": {"x": 0, "y": 12, "w": 560, "h": 24, "horz_align": 1, "vert_align": 1}, "fore_color": [1, 1, 1, 1], "font_enum": 3, "text_scale": 0.65, "text_align_mode": 8, "text_align_y": 0, "static_flags": 1048576},
+      {"name": "row0", "item_type": 1, "style": 1, "text_key": "", "rect": {"x": 0, "y": 80, "w": 580, "h": 20, "horz_align": 1, "vert_align": 1}, "background": "menu_button_selection_bar", "fore_color": [1, 1, 1, 1], "back_color": [0, 0, 0, 0], "font_enum": 3, "text_scale": 0.375, "text_align_mode": 8, "text_align_x": 8, "text_align_y": 0, "handlers": {"action": [{"Script": "play mouse_click; exec \"ui_join_lobby 0\";"}], "focus": [{"Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"}], "leave_focus": [{"Script": "setItemColor self backcolor 0 0 0 0;"}]}, "text_exp": "op 38 s:75695f62726f777365725f30 op 1", "vis_exp": "op 38 s:75695f62726f777365725f30 op 1 op 13 s:"},
+      {"name": "row1", "item_type": 1, "style": 1, "text_key": "", "rect": {"x": 0, "y": 102, "w": 580, "h": 20, "horz_align": 1, "vert_align": 1}, "background": "menu_button_selection_bar", "fore_color": [1, 1, 1, 1], "back_color": [0, 0, 0, 0], "font_enum": 3, "text_scale": 0.375, "text_align_mode": 8, "text_align_x": 8, "text_align_y": 0, "handlers": {"action": [{"Script": "play mouse_click; exec \"ui_join_lobby 1\";"}], "focus": [{"Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"}], "leave_focus": [{"Script": "setItemColor self backcolor 0 0 0 0;"}]}, "text_exp": "op 38 s:75695f62726f777365725f31 op 1", "vis_exp": "op 38 s:75695f62726f777365725f31 op 1 op 13 s:"},
+      {"name": "row2", "item_type": 1, "style": 1, "text_key": "", "rect": {"x": 0, "y": 124, "w": 580, "h": 20, "horz_align": 1, "vert_align": 1}, "background": "menu_button_selection_bar", "fore_color": [1, 1, 1, 1], "back_color": [0, 0, 0, 0], "font_enum": 3, "text_scale": 0.375, "text_align_mode": 8, "text_align_x": 8, "text_align_y": 0, "handlers": {"action": [{"Script": "play mouse_click; exec \"ui_join_lobby 2\";"}], "focus": [{"Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"}], "leave_focus": [{"Script": "setItemColor self backcolor 0 0 0 0;"}]}, "text_exp": "op 38 s:75695f62726f777365725f32 op 1", "vis_exp": "op 38 s:75695f62726f777365725f32 op 1 op 13 s:"},
+      {"name": "row3", "item_type": 1, "style": 1, "text_key": "", "rect": {"x": 0, "y": 146, "w": 580, "h": 20, "horz_align": 1, "vert_align": 1}, "background": "menu_button_selection_bar", "fore_color": [1, 1, 1, 1], "back_color": [0, 0, 0, 0], "font_enum": 3, "text_scale": 0.375, "text_align_mode": 8, "text_align_x": 8, "text_align_y": 0, "handlers": {"action": [{"Script": "play mouse_click; exec \"ui_join_lobby 3\";"}], "focus": [{"Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"}], "leave_focus": [{"Script": "setItemColor self backcolor 0 0 0 0;"}]}, "text_exp": "op 38 s:75695f62726f777365725f33 op 1", "vis_exp": "op 38 s:75695f62726f777365725f33 op 1 op 13 s:"},
+      {"name": "row4", "item_type": 1, "style": 1, "text_key": "", "rect": {"x": 0, "y": 168, "w": 580, "h": 20, "horz_align": 1, "vert_align": 1}, "background": "menu_button_selection_bar", "fore_color": [1, 1, 1, 1], "back_color": [0, 0, 0, 0], "font_enum": 3, "text_scale": 0.375, "text_align_mode": 8, "text_align_x": 8, "text_align_y": 0, "handlers": {"action": [{"Script": "play mouse_click; exec \"ui_join_lobby 4\";"}], "focus": [{"Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"}], "leave_focus": [{"Script": "setItemColor self backcolor 0 0 0 0;"}]}, "text_exp": "op 38 s:75695f62726f777365725f34 op 1", "vis_exp": "op 38 s:75695f62726f777365725f34 op 1 op 13 s:"},
+      {"name": "row5", "item_type": 1, "style": 1, "text_key": "", "rect": {"x": 0, "y": 190, "w": 580, "h": 20, "horz_align": 1, "vert_align": 1}, "background": "menu_button_selection_bar", "fore_color": [1, 1, 1, 1], "back_color": [0, 0, 0, 0], "font_enum": 3, "text_scale": 0.375, "text_align_mode": 8, "text_align_x": 8, "text_align_y": 0, "handlers": {"action": [{"Script": "play mouse_click; exec \"ui_join_lobby 5\";"}], "focus": [{"Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"}], "leave_focus": [{"Script": "setItemColor self backcolor 0 0 0 0;"}]}, "text_exp": "op 38 s:75695f62726f777365725f35 op 1", "vis_exp": "op 38 s:75695f62726f777365725f35 op 1 op 13 s:"},
+      {"name": "row6", "item_type": 1, "style": 1, "text_key": "", "rect": {"x": 0, "y": 212, "w": 580, "h": 20, "horz_align": 1, "vert_align": 1}, "background": "menu_button_selection_bar", "fore_color": [1, 1, 1, 1], "back_color": [0, 0, 0, 0], "font_enum": 3, "text_scale": 0.375, "text_align_mode": 8, "text_align_x": 8, "text_align_y": 0, "handlers": {"action": [{"Script": "play mouse_click; exec \"ui_join_lobby 6\";"}], "focus": [{"Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"}], "leave_focus": [{"Script": "setItemColor self backcolor 0 0 0 0;"}]}, "text_exp": "op 38 s:75695f62726f777365725f36 op 1", "vis_exp": "op 38 s:75695f62726f777365725f36 op 1 op 13 s:"},
+      {"name": "row7", "item_type": 1, "style": 1, "text_key": "", "rect": {"x": 0, "y": 234, "w": 580, "h": 20, "horz_align": 1, "vert_align": 1}, "background": "menu_button_selection_bar", "fore_color": [1, 1, 1, 1], "back_color": [0, 0, 0, 0], "font_enum": 3, "text_scale": 0.375, "text_align_mode": 8, "text_align_x": 8, "text_align_y": 0, "handlers": {"action": [{"Script": "play mouse_click; exec \"ui_join_lobby 7\";"}], "focus": [{"Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"}], "leave_focus": [{"Script": "setItemColor self backcolor 0 0 0 0;"}]}, "text_exp": "op 38 s:75695f62726f777365725f37 op 1", "vis_exp": "op 38 s:75695f62726f777365725f37 op 1 op 13 s:"},
+      {"name": "row8", "item_type": 1, "style": 1, "text_key": "", "rect": {"x": 0, "y": 256, "w": 580, "h": 20, "horz_align": 1, "vert_align": 1}, "background": "menu_button_selection_bar", "fore_color": [1, 1, 1, 1], "back_color": [0, 0, 0, 0], "font_enum": 3, "text_scale": 0.375, "text_align_mode": 8, "text_align_x": 8, "text_align_y": 0, "handlers": {"action": [{"Script": "play mouse_click; exec \"ui_join_lobby 8\";"}], "focus": [{"Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"}], "leave_focus": [{"Script": "setItemColor self backcolor 0 0 0 0;"}]}, "text_exp": "op 38 s:75695f62726f777365725f38 op 1", "vis_exp": "op 38 s:75695f62726f777365725f38 op 1 op 13 s:"},
+      {"name": "row9", "item_type": 1, "style": 1, "text_key": "", "rect": {"x": 0, "y": 278, "w": 580, "h": 20, "horz_align": 1, "vert_align": 1}, "background": "menu_button_selection_bar", "fore_color": [1, 1, 1, 1], "back_color": [0, 0, 0, 0], "font_enum": 3, "text_scale": 0.375, "text_align_mode": 8, "text_align_x": 8, "text_align_y": 0, "handlers": {"action": [{"Script": "play mouse_click; exec \"ui_join_lobby 9\";"}], "focus": [{"Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"}], "leave_focus": [{"Script": "setItemColor self backcolor 0 0 0 0;"}]}, "text_exp": "op 38 s:75695f62726f777365725f39 op 1", "vis_exp": "op 38 s:75695f62726f777365725f39 op 1 op 13 s:"},
+      {"name": "previous", "item_type": 1, "style": 1, "text_key": "PREVIOUS PAGE", "rect": {"x": -64, "y": 326, "w": 336, "h": 20, "horz_align": 1, "vert_align": 1}, "background": "menu_button_selection_bar", "fore_color": [1, 1, 1, 1], "back_color": [0, 0, 0, 0], "font_enum": 3, "text_scale": 0.375, "text_align_mode": 8, "text_align_x": 68, "text_align_y": 0, "handlers": {"action": [{"Script": "play mouse_click; exec \"ui_browser_page -1\";"}], "focus": [{"Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"}], "leave_focus": [{"Script": "setItemColor self backcolor 0 0 0 0;"}]}},
+      {"name": "next", "item_type": 1, "style": 1, "text_key": "NEXT PAGE", "rect": {"x": -64, "y": 348, "w": 336, "h": 20, "horz_align": 1, "vert_align": 1}, "background": "menu_button_selection_bar", "fore_color": [1, 1, 1, 1], "back_color": [0, 0, 0, 0], "font_enum": 3, "text_scale": 0.375, "text_align_mode": 8, "text_align_x": 68, "text_align_y": 0, "handlers": {"action": [{"Script": "play mouse_click; exec \"ui_browser_page 1\";"}], "focus": [{"Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"}], "leave_focus": [{"Script": "setItemColor self backcolor 0 0 0 0;"}]}},
+      {"name": "back", "item_type": 1, "style": 1, "text_key": "BACK", "rect": {"x": -64, "y": 392, "w": 336, "h": 20, "horz_align": 1, "vert_align": 1}, "background": "menu_button_selection_bar", "fore_color": [1, 1, 1, 1], "back_color": [0, 0, 0, 0], "font_enum": 3, "text_scale": 0.375, "text_align_mode": 8, "text_align_x": 68, "text_align_y": 0, "handlers": {"action": [{"Script": "play mouse_click; close self;"}], "focus": [{"Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"}], "leave_focus": [{"Script": "setItemColor self backcolor 0 0 0 0;"}]}},
+      {"name": "refresh", "item_type": 1, "style": 1, "text_key": "REFRESH", "rect": {"x": -64, "y": 370, "w": 336, "h": 20, "horz_align": 1, "vert_align": 1}, "background": "menu_button_selection_bar", "fore_color": [1, 1, 1, 1], "back_color": [0, 0, 0, 0], "font_enum": 3, "text_scale": 0.375, "text_align_mode": 8, "text_align_x": 68, "text_align_y": 0, "handlers": {"action": [{"Script": "play mouse_click; exec \"ui_browser_refresh\";"}], "focus": [{"Script": "play mouse_over; setItemColor self backcolor 0 0 0 1;"}], "leave_focus": [{"Script": "setItemColor self backcolor 0 0 0 0;"}]}},
+      {"name": "status", "text_key": "", "rect": {"x": 0, "y": 428, "w": 560, "h": 24, "horz_align": 1, "vert_align": 1}, "fore_color": [1, 1, 1, 1], "font_enum": 3, "text_scale": 0.375, "text_align_mode": 8, "text_align_y": 0, "static_flags": 1048576, "text_exp": "op 38 s:75695f62726f777365725f737461747573 op 1"}
+    ]
+  },
+  {
+    "name": "game_mode_select",
+    "base": "settings_gametype",
+    "fields": {
+      "handlers": {
+        "open": [
+          {
+            "Script": "focusFirst; setFocusByDvar ui_gametype;"
+          }
+        ],
+        "close": [],
+        "close_request": [],
+        "esc": [
+          {
+            "Script": "close self;"
+          }
+        ]
+      }
+    },
+    "item_overrides": [
+      {
+        "index": 15,
+        "fields": {
+          "disabled_exp": "0",
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_select_mode dm\";"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "index": 16,
+        "fields": {
+          "disabled_exp": "0",
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_select_mode war\";"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "index": 17,
+        "fields": {
+          "disabled_exp": "0",
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_select_mode sd\";"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "index": 18,
+        "fields": {
+          "disabled_exp": "0",
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_select_mode sab\";"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "index": 19,
+        "fields": {
+          "disabled_exp": "0",
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_select_mode dom\";"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "index": 20,
+        "fields": {
+          "disabled_exp": "0",
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_select_mode koth\";"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "index": 21,
+        "fields": {
+          "disabled_exp": "0",
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_select_mode ctf\";"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "index": 22,
+        "fields": {
+          "disabled_exp": "0",
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; exec \"ui_select_mode dd\";"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "index": 23,
+        "fields": {
+          "vis_exp": "1",
+          "handlers": {
+            "action": [
+              {
+                "Script": "play mouse_click; close self;"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "index": 24,
+        "fields": {
+          "vis_exp": "0"
+        }
+      }
+    ]
+  }
+]

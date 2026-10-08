@@ -1,0 +1,11 @@
+[package]
+name = "bo2_profile"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "bo2mp: Black Ops II multiplayer items, classes and the player's stats (std only), shared by the menus and the server."
+
+[dependencies]
+
+[lints]
+workspace = true

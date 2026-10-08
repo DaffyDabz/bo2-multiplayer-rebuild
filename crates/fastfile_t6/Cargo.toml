@@ -1,0 +1,11 @@
+[package]
+name = "fastfile_t6"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "bo2zm: retail T6 / Black Ops II PC zone container: TAff0100 envelope, Salsa20 XChunk streams, XFile header, XAssetList."
+
+[dependencies]
+
+[lints]
+workspace = true

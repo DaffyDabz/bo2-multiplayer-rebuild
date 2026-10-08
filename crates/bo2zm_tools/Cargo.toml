@@ -1,0 +1,105 @@
+[package]
+name = "bo2zm_tools"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "bo2zm: command-line probes for Black Ops II game files (read-only)."
+
+[[bin]]
+name = "t6lua"
+path = "src/bin/t6lua.rs"
+
+[[bin]]
+name = "t6zone"
+path = "src/bin/t6zone.rs"
+
+[[bin]]
+name = "t6ipak"
+path = "src/bin/t6ipak.rs"
+
+[[bin]]
+name = "t6check"
+path = "src/bin/t6check.rs"
+
+[[bin]]
+name = "t6world"
+path = "src/bin/t6world.rs"
+
+[[bin]]
+name = "t6clip"
+path = "src/bin/t6clip.rs"
+
+[[bin]]
+name = "t6mat"
+path = "src/bin/t6mat.rs"
+
+[[bin]]
+name = "t6shader"
+path = "src/bin/t6shader.rs"
+
+[[bin]]
+name = "t6list"
+path = "src/bin/t6list.rs"
+
+[[bin]]
+name = "t6m2"
+path = "src/bin/t6m2.rs"
+
+[[bin]]
+name = "t6bones"
+path = "src/bin/t6bones.rs"
+
+[[bin]]
+name = "t6gsc"
+path = "src/bin/t6gsc.rs"
+
+[[bin]]
+name = "t6fxmat"
+path = "src/bin/t6fxmat.rs"
+
+[dependencies]
+asset_transport.workspace = true
+asset_t6.workspace = true
+gsc_t6.workspace = true
+hks_t6.workspace = true
+fastfile_t6.workspace = true
+ipak_t6.workspace = true
+sab_t6.workspace = true
+png.workspace = true
+bcdec_rs.workspace = true
+xmodel_runtime.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "t6props"
+path = "src/bin/t6props.rs"
+
+[[bin]]
+name = "t6census"
+path = "src/bin/t6census.rs"
+
+[[bin]]
+name = "t6run"
+path = "src/bin/t6run.rs"
+
+[[bin]]
+name = "t6icon"
+path = "src/bin/t6icon.rs"
+
+[[bin]]
+name = "t6scope"
+path = "src/bin/t6scope.rs"
+
+[[bin]]
+name = "t6wicon"
+path = "src/bin/t6wicon.rs"
+
+[[bin]]
+name = "t6alt"
+path = "src/bin/t6alt.rs"
+
+[[bin]]
+name = "t6dups"
+path = "src/bin/t6dups.rs"
