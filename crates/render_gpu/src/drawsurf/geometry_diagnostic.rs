@@ -507,11 +507,20 @@ fn prop_style(code: u32) -> u16 {
         style |= STYLE_PROP_TILE;
     }
     // bo2mp: a tattered flag tests its own alpha (the mixed edge), not the
-    // diffuse's (gloss).
+    // diffuse's (gloss). A tile blend sets both bits (tile and flag).
     if code & T6_FLAG != 0 && code & T6_UNLIT == 0 {
         style = (style & !(T6_ALPHA_TEST as u16)) | STYLE_PROP_FLAG;
     }
     style
+}
+
+/// The prop kind among emissive tile, tattered flag and tile blend.
+fn prop_own_kind(style: u16) -> u16 {
+    if style & T6_UNLIT as u16 != 0 {
+        0
+    } else {
+        style & (STYLE_PROP_TILE | STYLE_PROP_FLAG)
+    }
 }
 
 /// Draw-code bit of a lit code: BO2's tattered flag (`flag_tatters`).
@@ -810,18 +819,15 @@ impl SpecializedRenderPipeline for DiagnosticPipeline {
                             defs.push("FLOW".into());
                         }
                         if matches!(key.tess, DiagnosticTess::PropTextured(_))
-                            && style & T6_UNLIT as u16 == 0
-                            && style & STYLE_PROP_TILE != 0
-                            && style & STYLE_SHINE != 0
-                        {
-                            defs.push("TILE".into());
-                        }
-                        if matches!(key.tess, DiagnosticTess::PropTextured(_))
                             && style & (T6_UNLIT | T6_EFFECT) as u16 == 0
-                            && style & STYLE_PROP_FLAG != 0
                             && style & STYLE_SHINE != 0
                         {
-                            defs.push("FLAG".into());
+                            match prop_own_kind(style) {
+                                STYLE_PROP_TILE => defs.push("TILE".into()),
+                                STYLE_PROP_FLAG => defs.push("FLAG".into()),
+                                0x4040 => defs.push("TILE_BLEND".into()),
+                                _ => {}
+                            }
                         }
                         if matches!(key.tess, DiagnosticTess::PropTextured(_))
                             && style & T6_EFFECT as u16 != 0
@@ -1492,6 +1498,19 @@ fn upload_dynamic(
         "bo2zm_viewmodel_effects",
         source.and_then(|s| s.viewmodel_effects.as_ref()),
     );
+    // bo2mp test aid: `IW4L_T6_SKIP_LIST=marks,missiles,static,effects`
+    // leaves those dynamic lists out (bisecting a stray surface).
+    static SKIP: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    let skip = SKIP.get_or_init(|| std::env::var("IW4L_T6_SKIP_LIST").unwrap_or_default());
+    for name in skip.split(',') {
+        match name {
+            "marks" => dynamic.marks = None,
+            "missiles" => dynamic.missiles = None,
+            "static" => dynamic.script_static = None,
+            "effects" => dynamic.effects = None,
+            _ => {}
+        }
+    }
 }
 
 /// bo2zm: bind groups for the lightmap pages the world surfaces read, with

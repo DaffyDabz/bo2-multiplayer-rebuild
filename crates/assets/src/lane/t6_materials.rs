@@ -38,6 +38,7 @@ const LASER_SCAN_IMAGE_HASH: u32 = 0x079c_6367;
 /// `_c` on the cliffs: Downhill's red and yellow rocks).
 const TILE_BLEND_MACRO_HASH: u32 = 0xed0a_4f83;
 const TILE_BLEND_MICRO1_HASH: u32 = name_hash("Micro_1_ColorMap");
+const TILE_BLEND_MICRO2_HASH: u32 = name_hash("Micro_2_ColorMap");
 
 /// `R_HashString`: case-folded, xor with 33 times the running hash.
 const fn name_hash(name: &str) -> u32 {
@@ -445,8 +446,9 @@ fn half_bits(v: f32) -> u16 {
 /// 0..3 the four normal-map layers (world xy scale, scroll per second),
 /// 4 normal scale and bias (first map, second map), 5 the layers' weights,
 /// 6 highlight powers, fresnel bias and scale, 7 highlight strengths, their
-/// overall scale and the kind (0 pool, 1 sea), 8 and 9 the water colour
-/// and opacity (pool: grazing and facing; sea: scatter and body, deep),
+/// overall scale and the kind (0 pool, 1 sea, 2 open sea: no vertex
+/// alpha), 8 and 9 the water colour and opacity (pool: grazing and facing;
+/// sea: scatter and body, deep),
 /// 10 the sea's shadow light.
 fn water_table(material: &asset_t6::MaterialRef, kind: u8) -> Vec<[f32; 4]> {
     let c = |hash: u32| {
@@ -491,13 +493,12 @@ fn water_table(material: &asset_t6::MaterialRef, kind: u8) -> Vec<[f32; 4]> {
         let c2 = c(0x9ea1_a765);
         let c3 = c(0x9ea1_a764);
         let control1 = c(0x483f_c933);
-        // The open-sea variants (Carrier, Takeoff) have no opacity control:
-        // they draw opaque (their shader refracts nothing).
-        let opacity = material
-            .constants
-            .iter()
-            .find(|c| c.0 == 0x8898_e1ab)
-            .map_or(1.0, |c| c.2[3]);
+        // The open-sea variants (Carrier, Takeoff, Frostbite's distant sea)
+        // have no opacity control: they draw opaque and never read the
+        // vertex colour (kind 2; their shader refracts nothing).
+        let opacity_control = material.constants.iter().find(|c| c.0 == 0x8898_e1ab);
+        let opacity = opacity_control.map_or(1.0, |c| c.2[3]);
+        let kind = if opacity_control.is_some() { 1.0 } else { 2.0 };
         let mut scatter = add(c(0xe887_d68c), c(0xeef4_77a2));
         let mut body = add(c(0x7429_46aa), c(0x9092_abc4));
         scatter[3] = opacity;
@@ -510,7 +511,7 @@ fn water_table(material: &asset_t6::MaterialRef, kind: u8) -> Vec<[f32; 4]> {
             c(0xb47c_f4c9),
             [1.0, 0.0, 1.0, 1.0],
             c(0x483f_c932),
-            [control1[0], control1[1], 0.3184, 1.0],
+            [control1[0], control1[1], 0.3184, kind],
             scatter,
             body,
             c(0xc9e7_ae4a),
@@ -761,6 +762,15 @@ pub(crate) fn link_materials_with(
             material.state_bits.get(usize::from(entry)).copied()
         });
         let mut draw = T6Draw::from_technique_set(technique_set, material.sort_key, state);
+        // bo2mp test aid: `IW4L_T6_HIDE_MAT=a,b` leaves out every material
+        // whose name contains one of them (bisecting a stray surface).
+        if let Ok(hide) = std::env::var("IW4L_T6_HIDE_MAT")
+            && hide
+                .split(',')
+                .any(|h| !h.is_empty() && material.name.contains(h))
+        {
+            draw.blend = asset_core::T6Blend::ShadowOnly;
+        }
         // bo2mp: a material whose surface flags say "only cast shadow"
         // (0x80000, the `onlycastshadow` infoParm: `wpc/shadowcaster` and
         // trees' shadow cards like Raid's `mtl_ctl_tree_shadow_caster`)
@@ -1100,6 +1110,84 @@ pub(crate) fn link_materials_with(
             }
         } else {
             draw.tile = false;
+        }
+        // bo2mp: a tile blend model material (cliffs, rocks, vista mountains):
+        // Micro_1 as its colour map, Micro_2 in the specular map's place, the
+        // macro AO/mix map in the normal map's, and Micro_1_Scale,
+        // Micro_2_Scale, AO_Diffuse_Adj, EdgeHighlight (2x1 RGBA16F) in layer
+        // 1's. World tile blends keep the stand-in colour map.
+        if draw.tile_blend && !technique_set.starts_with("wpc_") {
+            let mut slots = [None; 3];
+            for (slot, hash) in slots.iter_mut().zip([
+                TILE_BLEND_MICRO1_HASH,
+                TILE_BLEND_MICRO2_HASH,
+                TILE_BLEND_MACRO_HASH,
+            ]) {
+                *slot = material
+                    .textures
+                    .iter()
+                    .find(|t| t.name_hash == hash)
+                    .and_then(|t| t.image)
+                    .and_then(|key| link(key, catalog, &mut failures, &mut decoded));
+            }
+            let [micro1, micro2, macro_map] = slots;
+            if let (Some(micro1), Some(micro2), Some(macro_map)) = (micro1, micro2, macro_map) {
+                let c = |hash: u32, default: [f32; 4]| {
+                    material
+                        .constants
+                        .iter()
+                        .find(|c| c.0 == hash)
+                        .map_or(default, |c| c.2)
+                };
+                let s1 = c(0x1818_f373, [1.0; 4]);
+                let s2 = c(0x7d8c_def0, [1.0; 4]);
+                let ao = c(0x9923_36af, [0.0; 4])[0];
+                let edge = c(0x259b_0793, [1.0; 4])[0];
+                let consts = water_image(&[[s1[0], s1[1], s2[0], s2[1]], [ao, edge, 0.0, 0.0]]);
+                let consts = catalog.link_image(AuthoredImage {
+                    namespace: AssetNamespace::T6,
+                    name: AssetRef::Real(format!("{}#tile_blend", material.name)),
+                    map_type: 0,
+                    semantic: 0xf1,
+                    category: 0,
+                    use_srgb_reads: false,
+                    width: 2,
+                    height: 1,
+                    depth: 1,
+                    level_count: 1,
+                    format: 0,
+                    payload: Arc::new(Vec::new()),
+                    decoded: Some(Arc::new(consts)),
+                    common_owned: false,
+                    decoded_variant: None,
+                    decoded_by: None,
+                    pending_decode: None,
+                });
+                textures.retain(|t| t.semantic != TS_COLOR_MAP);
+                for (image, semantic) in [
+                    (micro1, TS_COLOR_MAP),
+                    (micro2, TS_SPECULAR_MAP),
+                    (macro_map, TS_NORMAL_MAP),
+                    (consts, 0xf1u8),
+                ] {
+                    textures.push(MaterialTextureBinding {
+                        name_hash: if semantic == TS_COLOR_MAP {
+                            COLOR_MAP_HASH
+                        } else {
+                            0
+                        },
+                        name_start: 0,
+                        name_end: 0,
+                        sampler_state: 0x14,
+                        semantic,
+                        image: Some(image),
+                    });
+                }
+            } else {
+                draw.tile_blend = false;
+            }
+        } else {
+            draw.tile_blend = false;
         }
         // bo2mp: a tattered flag's frayed edge texture (in the specular map's
         // place) and its EdgeScale (a 1x1 picture in layer 1's place).

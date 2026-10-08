@@ -162,6 +162,15 @@ pub struct T6Draw {
     /// the vertex colour's red, alpha-tested on the mix. Bit 14 of a lit
     /// code.
     pub flag: bool,
+    /// bo2mp: BO2's tile blend (`sw4_3d_cod7_tile_blend`, `_edge`, `_spec`:
+    /// cliffs, rocks, vista mountains): two tiled colour maps mixed by a
+    /// macro mask, with macro AO. Bits 12 and 14 of a lit code together.
+    pub tile_blend: bool,
+}
+
+/// A tile blend technique set (`*_cod7_tile_blend*`).
+fn tile_blend_technique(name: &str) -> bool {
+    name.contains("cod7_tile_blend")
 }
 
 /// A tattered flag technique set (`*_flag_tatters_*`).
@@ -328,6 +337,7 @@ impl T6Draw {
             flow: flow_technique(name),
             tile: tile_technique(name),
             flag: flag_technique(name),
+            tile_blend: tile_blend_technique(name),
         }
     }
 
@@ -383,6 +393,7 @@ impl T6Draw {
             flow: flow_technique(name),
             tile: tile_technique(name),
             flag: flag_technique(name),
+            tile_blend: tile_blend_technique(name),
         }
     }
 
@@ -432,6 +443,11 @@ impl T6Draw {
                 0
             }
             | if self.flag && !self.unlit { 0x4000 } else { 0 }
+            | if self.tile_blend && !self.unlit {
+                0x5000
+            } else {
+                0
+            }
     }
 
     pub const NONE_CODE: u32 = 0xffff_ffff;

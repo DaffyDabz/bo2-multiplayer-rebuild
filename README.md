@@ -19,6 +19,7 @@ redistributes it. Unofficial fan project, not affiliated with or endorsed by Act
 - [Configuration](#configuration)
 - [How it works](#how-it-works)
 - [Status](#status)
+- [Recent changes](#recent-changes)
 - [Coming soon](#coming-soon)
 - [Credits and license](#credits-and-license)
 
@@ -117,6 +118,12 @@ Work in progress, first playable build. Matches against Black Ops II's own bots 
 from the game's own menus. Many menus and HUD pieces are close to the original but not one-for-one, and some
 scorestreaks and effects are still missing. It has been run on one Windows 11 PC (RTX 4070 Ti class GPU, 1920x1080)
 only. Like upstream IW4L, much of this code was written by an LLM (Claude), directed and play-tested by the author.
+
+## Recent changes
+
+- 2026-10-08: Frostbite's open sea no longer shows a dark wedge beside the rooftops, and cliffs, rocks and
+  mountains on 13+ maps (Hydro, Cove, Drone, Castaway...) draw Black Ops II's own tiled rock detail instead of one
+  flat colour.
 
 ## Coming soon
 

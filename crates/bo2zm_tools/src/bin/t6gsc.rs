@@ -173,7 +173,10 @@ fn main() -> ExitCode {
     }
     println!("loops at points {}: {:?}", facts.loops_at.len(), facts.loops_at);
     if std::env::var_os("T6GSC_CALLS").is_some() {
-        for name in ["clientscripts/mp/zm_nuked_amb.csc"] {
+        // `T6GSC_SCRIPT=<name>`: that script's calls instead.
+        let chosen = std::env::var("T6GSC_SCRIPT")
+            .unwrap_or_else(|_| "clientscripts/mp/zm_nuked_amb.csc".to_owned());
+        for name in [chosen.as_str()] {
             if let Some(g) = scripts.get(name).and_then(|b| GscObject::parse(b).ok()) {
                 for c in g.run().calls {
                     println!("call [{}] {}({:?})", c.caller, c.function, c.args);

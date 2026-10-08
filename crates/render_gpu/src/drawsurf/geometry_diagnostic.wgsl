@@ -613,7 +613,10 @@ fn fragment_lightmapped(in: VertexOut) -> @location(0) vec4<f32> {
     let wfh = wc0.w * whl * whl * whl * whl * whl + wc0.z;
     let whv = max(saturate(dot(wh, -wv)) * 4.0, 0.0001);
     wadd += wsun * (wlobe * wfh * wndotl / whv * wc1.z);
-    let wa = saturate(select(wbody.a, wca.a, wsea) * in.color.a);
+    // The open sea (kind 2) never reads the vertex colour: its far quads
+    // carry alpha 0 at their edges (Frostbite's distant sea).
+    let wvalpha = select(in.color.a, 1.0, wc1.w > 1.5);
+    let wa = saturate(select(wbody.a, wca.a, wsea) * wvalpha);
     let wout = wsolid + wadd / max(wa, 0.05);
     return vec4(bo2_out(bo2_fog(wout, in.world_position)), wa);
 #endif
@@ -916,6 +919,30 @@ fn fragment_prop(in: PropOut) -> @location(0) vec4<f32> {
         bo2_out(bo2_fog(tbase * tbase * tlight + tglow * tglow, in.world_position)),
         1.0,
     );
+#endif
+#ifdef TILE_BLEND
+    // bo2mp: Black Ops II's tile blend (`sw4_3d_cod7_tile_blend`, `_edge`,
+    // `_spec`; cliffs, rocks, vista mountains; lit technique, fxc
+    // disassembly): Micro_1 (colour map, at uv * Micro_1_Scale) and Micro_2
+    // (specular map's place, at uv * Micro_2_Scale) mixed by the macro
+    // map's green squared (normal map's place), times 1 + blue^2 *
+    // (EdgeHighlight - 1) (the edge variant; 1 elsewhere), times the vertex
+    // colour, squared; the ambient light times saturate(red^2 +
+    // AO_Diffuse_Adj); the primary light by the vertex normal (the macro
+    // and micro normal maps and the spec variant's specular are not drawn).
+    let bc0 = textureLoad(aux_map, vec2<i32>(0, 0), 0);
+    let bc1 = textureLoad(aux_map, vec2<i32>(1, 0), 0);
+    let bm = raw_texel(textureSample(normal_map, colour_sampler, in.uv).rgb);
+    let b1 = raw_texel(textureSample(colour_map, colour_sampler, in.uv * bc0.xy).rgb);
+    let b2 = raw_texel(textureSample(specular_map, colour_sampler, in.uv * bc0.zw).rgb);
+    let bedge = 1.0 + bm.z * bm.z * (bc1.y - 1.0);
+    let btint = select(in.color.rgb, vec3(1.0), in.light.w > 0.0);
+    let bcol = saturate(mix(b1, b2, bm.y * bm.y) * bedge) * btint;
+    let bao = saturate(bm.x * bm.x + bc1.x);
+    let bray = primary_light_ray(u32(in.primary.x + 0.5), in.world_position);
+    var blight = light * bao + bray.colour * in.primary.y * saturate(dot(vn, bray.dir));
+    blight += dyn_lights(in.world_position, vn);
+    return vec4(bo2_out(bo2_fog(bcol * bcol * blight, in.world_position)), 1.0);
 #endif
 #ifdef FLAG
     // bo2mp: Black Ops II's tattered flag (`sw4_3d_phong_simple_flag_tatters`,

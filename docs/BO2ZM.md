@@ -142,6 +142,13 @@ dumps a technique's DXBC; the Windows SDK's `fxc /dumpbin` disassembles it).
   128/255; the edge in the specular map's place, EdgeScale in layer 1's.
   `DiffuseAndGloss` (0xd50e4161) is a colour map wherever a material has
   no `colorMap`.
+- Tile blend (`sw4_3d_cod7_tile_blend`, `_edge`, `_spec`: cliffs, rocks,
+  vista mountains, props): Micro_1 (colour map, uv * Micro_1_Scale) and
+  Micro_2 (specular map's place) mixed by the macro map's green squared
+  (normal map's place), times 1 + blue^2 * (EdgeHighlight - 1), times the
+  vertex colour; ambient times saturate(red^2 + AO_Diffuse_Adj). Normal maps
+  and the spec variant's specular are not drawn. World tile blends keep the
+  `_cheap` stand-in.
 - Exposure: the first exposure volume's, else the world sun's own
   (`GfxWorld::sunParse.initWorldSun.exposure`: Cove 2.43, Plaza 4.65, Pod
   2.6, Uplink 2.7 have no volumes).
