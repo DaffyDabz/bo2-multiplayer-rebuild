@@ -161,6 +161,25 @@ impl Bo2Fonts {
         px: f32,
         shadow: f32,
     ) -> Vec2 {
+        self.spawn_line_shadowed(parent, font, runs, px, shadow, 0.75)
+    }
+
+    /// bo2mp: `font`'s own pixel height (the em its glyphs were cut at).
+    pub fn pixel_height(&self, font: &str) -> f32 {
+        self.font(font).map_or(0.0, |f| f.pixel_height)
+    }
+
+    /// bo2mp: `spawn_line` with the shadow's alpha as a share of the text's
+    /// (BO2's engine draws a hudelem's drop shadow at the text's own alpha).
+    pub fn spawn_line_shadowed(
+        &self,
+        parent: &mut ChildSpawnerCommands,
+        font: &str,
+        runs: &[(String, Color)],
+        px: f32,
+        shadow: f32,
+        shadow_alpha: f32,
+    ) -> Vec2 {
         let Some(f) = self.font(font) else {
             return Vec2::ZERO;
         };
@@ -208,7 +227,7 @@ impl Bo2Fonts {
                 };
                 if shadow != 0.0 {
                     for (g, pen, color) in &placed {
-                        let a = color.alpha() * 0.75;
+                        let a = color.alpha() * shadow_alpha;
                         glyph(g, *pen, Color::srgba(0.0, 0.0, 0.0, a), shadow);
                     }
                 }

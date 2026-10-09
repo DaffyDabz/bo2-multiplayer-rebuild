@@ -573,6 +573,8 @@ struct ScriptElem {
     text: String,
     /// bo2mp: hidden while his menus are open (`hidewheninmenu`).
     hide_in_menu: bool,
+    /// bo2mp: the element's font name (`default`, `extrabig`, ...).
+    font: String,
 }
 
 fn parse_script_hud(s: &str) -> Vec<ScriptElem> {
@@ -596,6 +598,7 @@ fn parse_script_hud(s: &str) -> Vec<ScriptElem> {
                 sort: f[11].parse().unwrap_or(0),
                 text: f[12].to_owned(),
                 hide_in_menu: f.get(13) == Some(&"m"),
+                font: f.get(14).map_or("default", |v| v).to_owned(),
             })
         })
         .collect();
@@ -697,17 +700,15 @@ fn zm_script_hud(
     let keys = keys.as_deref().cloned().unwrap_or_default();
     let elems: Vec<ScriptElem> = parse_script_hud(&value).into_iter().filter(|e| !(menus_open && e.hide_in_menu) && !dimmed_out).collect();
     // bo2mp: the match-end outcome screen (title, text, the teams' pictures
-    // and scores; the pictures name it) is laid out on a 480-high screen
-    // scaled the same both ways, centred, and sits 35 units lower than the
-    // zombies' elements; its text is three quarters of the plain size.
-    // Measured against the real 1280x720 DEFEAT screen (row 60).
+    // and scores; the pictures name it) is placed as BO2's engine places a
+    // hudelem: 480 virtual units high, scaled the same both ways, its
+    // top/bottom/left/right aligns inside the safe area (see `OUTCOME_SAFE`).
     let outcome = elems.iter().any(|e| e.text.starts_with("#shader:faction_"));
-    let (x_off, y_off, text_k) = if outcome {
+    if outcome {
         kx = ky;
-        ((sw - 640.0 * ky) * 0.5, 35.0 * ky, 0.71)
-    } else {
-        (0.0, 0.0, 1.0)
-    };
+    }
+    // The safe area's margins in pixels: floor(share * size + 0.5).
+    let (safe_x, safe_y) = ((OUTCOME_SAFE * sw + 0.5).floor(), (OUTCOME_SAFE * sh + 0.5).floor());
     let mut root = commands.spawn((
         ZmScriptHudRoot,
         UiLayer::Hud,
@@ -738,9 +739,28 @@ fn zm_script_hud(
                 // three quarters of the plain size, without brackets
                 // (measured against real/55: 60 px against 80 for "Press").
                 let key_prompt = in_mp && e.text.contains("[{+");
-                let px = 18.0 * e.fontscale.max(0.1) * ky * text_k * if key_prompt { 0.75 } else { 1.0 };
-                let x = (base_x + e.x) * kx + x_off;
-                let y = (base_y + e.y) * ky + y_off;
+                let mut px = 18.0 * e.fontscale.max(0.1) * ky * if key_prompt { 0.75 } else { 1.0 };
+                let (mut x, mut y) = ((base_x + e.x) * kx, (base_y + e.y) * ky);
+                // bo2mp: the outcome screen: the engine's placement, font and
+                // size (`hudelem_font`); px is then the font's line height.
+                let mut face = "Default";
+                if outcome {
+                    x = match e.horzalign.as_str() {
+                        "center" | "user_center" | "center_safearea" => sw * 0.5 + e.x * ky,
+                        "right" | "user_right" | "right_adjustable" => sw - safe_x + e.x * ky,
+                        "left" | "user_left" | "left_adjustable" => safe_x + e.x * ky,
+                        _ => e.x * sw / 640.0,
+                    };
+                    y = match e.vertalign.as_str() {
+                        "middle" | "user_middle" | "center" | "center_safearea" => sh * 0.5 + e.y * ky,
+                        "bottom" | "user_bottom" | "bottom_adjustable" => sh - safe_y + e.y * ky,
+                        "top" | "user_top" | "top_adjustable" => safe_y + e.y * ky,
+                        _ => e.y * sh / 480.0,
+                    };
+                    let (f, h) = hudelem_font(&e.font, e.fontscale, ky);
+                    face = f;
+                    px = h;
+                }
                 // A wide box the text is justified in, so alignx anchors it.
                 let w = sw;
                 let (left, justify) = match e.alignx.as_str() {
@@ -748,9 +768,14 @@ fn zm_script_hud(
                     "right" => (x - w, Justify::Right),
                     _ => (x, Justify::Left),
                 };
-                let top = match e.aligny.as_str() {
-                    "middle" => y - px * 0.6,
-                    "bottom" => y - px * 1.2,
+                let top = match (outcome, e.aligny.as_str()) {
+                    // The engine: the box is the font's line height tall,
+                    // its top whole pixels.
+                    (true, "middle") => (y - px * 0.5).trunc(),
+                    (true, "bottom") => (y - px).trunc(),
+                    (true, _) => y.trunc(),
+                    (false, "middle") => y - px * 0.6,
+                    (false, "bottom") => y - px * 1.2,
                     _ => y,
                 };
                 // bo2mp: on the encoded world camera the numbers go in as the
@@ -929,9 +954,17 @@ fn zm_script_hud(
                         },
                     ))
                     .with_children(|c| {
-                        // His "a little bit too big": three quarters of the
-                        // size this drew at before.
-                        bo2.spawn_line(c, "Default", &runs, px * 0.94, px * 0.06);
+                        if outcome {
+                            // The engine: the em is the line height, the
+                            // drop shadow one font pixel down and right in
+                            // black at the text's own alpha.
+                            let shadow = px / bo2.pixel_height(face).max(1.0);
+                            bo2.spawn_line_shadowed(c, face, &runs, px, shadow, 1.0);
+                        } else {
+                            // His "a little bit too big": three quarters of
+                            // the size this drew at before.
+                            bo2.spawn_line(c, "Default", &runs, px * 0.94, px * 0.06);
+                        }
                     });
                     continue;
                 }
@@ -965,6 +998,47 @@ fn zm_script_hud(
                 });
             }
         });
+}
+
+/// bo2mp: the safe area's margin on each side as a share of the screen:
+/// (1 - 0.85) / 2, the engine family's `safeArea` default of 0.85 (IW4's
+/// SAFE_AREA_DEFAULT, crates/hud_iw4/src/scrplace.rs). Measured: the real
+/// 1280x720 DEFEAT screen (ref row 60) puts the title's box at 99 px =
+/// (54 + 30 * 1.5), 54 = floor(0.075 * 720 + 0.5).
+const OUTCOME_SAFE: f32 = (1.0 - 0.85) / 2.0;
+
+/// bo2mp: a text hudelem's font and line height in pixels as BO2's engine
+/// picks them (the cg_hudelem rules): the real scale is `fontscale` times
+/// the font's base (a quarter; bigfixed a half, smallfixed a third) times
+/// the screen's height over 480, and the line is 48 times that. `extrabig`
+/// is the extra-big font (Morris), `big` the big one, `small` and
+/// `smallfixed` the condensed one, `objective` the normal one; `default`
+/// takes the small font up to a scale of 0.25 (ui_smallFont), the big one
+/// from 0.4 (ui_bigFont), the normal one between.
+fn hudelem_font(font: &str, fontscale: f32, ky: f32) -> (&'static str, f32) {
+    let base = match font {
+        "bigfixed" => 0.5,
+        "smallfixed" => 1.0 / 3.0,
+        _ => 0.25,
+    };
+    let scale = fontscale.max(0.0) * base * ky;
+    let face = match font {
+        "extrabig" => "Morris",
+        "big" | "bigfixed" => "Big",
+        "small" | "smallfixed" => "Condensed",
+        "objective" => "Default",
+        _ => {
+            let a = scale * ky;
+            if a <= 0.25 {
+                "Condensed"
+            } else if a >= 0.4 {
+                "Big"
+            } else {
+                "Default"
+            }
+        }
+    };
+    (face, (48.0 * scale + 0.5).floor())
 }
 
 #[derive(Component)]

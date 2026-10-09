@@ -1092,7 +1092,15 @@ impl ZoneLane for T6Lane {
                         .filter_map(|a| {
                             let len = f32::from(a.numframes) / a.framerate;
                             let (first, last) = (a.delta_trans.first()?.1, a.delta_trans.last()?.1);
-                            let d = ((last[0] - first[0]).powi(2) + (last[1] - first[1]).powi(2)).sqrt();
+                            let v = [last[0] - first[0], last[1] - first[1], last[2] - first[2]];
+                            // T5 BG_AnimParseAnimScript: an animation that mostly
+                            // rises (x + y <= 0.8 z, a ladder climb up) moves by its
+                            // full 3D delta, every other one by its ground delta.
+                            let d = if v[0] + v[1] <= v[2] * 0.8 {
+                                (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt()
+                            } else {
+                                (v[0] * v[0] + v[1] * v[1]).sqrt()
+                            };
                             (len > 0.0 && d > 1.0).then(|| (a.name.to_ascii_lowercase(), d / len))
                         })
                         .collect(),

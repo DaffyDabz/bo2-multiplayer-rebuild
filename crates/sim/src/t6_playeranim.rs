@@ -36,6 +36,21 @@ impl T6PlayerAnimsRes {
                     .iter()
                     .map(|a| speeds.iter().find(|(n, _)| n == a).map_or(0.0, |(_, v)| *v))
                     .collect();
+                // A climb that moves is a ladder animation: it plays at his
+                // climbing speed (T5 BG_AnimParseAnimScript flags a
+                // climbup/climbdown animation with a move speed).
+                let mut ladder = vec![false; parsed.anims.len()];
+                for (movetype, items) in &parsed.moves {
+                    if movetype == "climbup" || movetype == "climbdown" {
+                        for c in items.iter().flat_map(|i| &i.commands) {
+                            let i = usize::from(c.anim);
+                            if parsed.speeds.get(i).is_some_and(|v| *v != 0.0) {
+                                ladder[i] = true;
+                            }
+                        }
+                    }
+                }
+                parsed.ladder = ladder;
                 Self(Some(std::sync::Arc::new(parsed)))
             }
             Err(e) => {
@@ -54,7 +69,7 @@ pub enum T6AnimPart {
     Both,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct T6AnimCommand {
     pub part: T6AnimPart,
     /// Index into [`T6PlayerAnims::anims`].
@@ -68,6 +83,9 @@ pub struct T6AnimCommand {
     /// `grenadeAnim`: the animation handles the grenade or piece of
     /// equipment (a throw, a plant): that item is in his hand.
     pub grenade_anim: bool,
+    /// `animrate`: the animation always plays at this rate, never at his
+    /// speed over its own (BO2's dives say `animrate 1`).
+    pub anim_rate: Option<f32>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -80,7 +98,7 @@ struct Cond {
     all_but: Option<Vec<String>>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 struct Item {
     /// Empty = `default` (always matches).
     conds: Vec<Cond>,
@@ -131,6 +149,8 @@ pub struct T6PlayerAnims {
     /// Each one's move speed (units/s of root motion; 0 = in place), when
     /// known: a moving legs animation plays at the player's speed over it.
     pub speeds: Vec<f32>,
+    /// Each one is a ladder climb (its rate follows his climbing speed).
+    pub ladder: Vec<bool>,
     /// The `playerAnimType` names in `playeranimtypes.txt` order (a weapon's
     /// `playerAnimType` is its place here).
     pub anim_types: Vec<String>,
@@ -396,6 +416,7 @@ impl T6PlayerAnims {
                 duration_ms: None,
                 weapon_time_scale: false,
                 grenade_anim: false,
+                anim_rate: None,
             };
             let mut k = 2;
             while k < words.len() {
@@ -405,6 +426,9 @@ impl T6PlayerAnims {
                     "blendtime" => command.blend_ms = value,
                     "blendouttime" => command.blend_out_ms = value,
                     "duration" => command.duration_ms = value,
+                    "animrate" => {
+                        command.anim_rate = words.get(k + 1).and_then(|v| v.parse::<f32>().ok()).filter(|r| *r > 0.0);
+                    }
                     "weapontimescale" => {
                         command.weapon_time_scale = true;
                         k += 1;
@@ -497,6 +521,11 @@ impl T6PlayerAnims {
     /// An animation's move speed (0 = in place or unknown).
     pub fn speed_of(&self, anim: u16) -> f32 {
         self.speeds.get(usize::from(anim)).copied().unwrap_or(0.0)
+    }
+
+    /// A ladder climb animation (see [`Self::ladder`]).
+    pub fn is_ladder(&self, anim: u16) -> bool {
+        self.ladder.get(usize::from(anim)).copied().unwrap_or(false)
     }
 
     /// The first command naming this animation (its blend and duration).

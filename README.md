@@ -13,6 +13,7 @@ redistributes it. Unofficial fan project, not affiliated with or endorsed by Act
 
 ## Contents
 
+- [Map completion](#map-completion)
 - [Features](#features)
 - [Requirements](#requirements)
 - [Build and run](#build-and-run)
@@ -22,6 +23,54 @@ redistributes it. Unofficial fan project, not affiliated with or endorsed by Act
 - [Recent changes](#recent-changes)
 - [Coming soon](#coming-soon)
 - [Credits and license](#credits-and-license)
+
+## Map completion
+
+How far along each multiplayer map is, mechanically (loads, spawns, each mode, bots, scorestreaks, killcam, match
+end) and visually (fixed spots shot in the original game and here from the same place, side by side). Every number
+comes from [docs/maps.json](docs/maps.json), where each passing item names the test run or screenshot that proves
+it; [docs/make_bars.py](docs/make_bars.py) draws this table. A visual spot only counts once it has a same-spot
+comparison shot from the original, so visuals read 0% until those shots are taken.
+
+<!-- map-bars:start -->
+```text
+                Mechanics         Visuals
+Aftermath       ████░░░░░░  38%   not compared yet
+Cargo           █░░░░░░░░░  12%   not compared yet
+Carrier         █░░░░░░░░░  12%   not compared yet
+Drone           █░░░░░░░░░  12%   not compared yet
+Express         █░░░░░░░░░  12%   not compared yet
+Hijacked        █░░░░░░░░░  12%   not compared yet
+Meltdown        █░░░░░░░░░  12%   not compared yet
+Overflow        █░░░░░░░░░  12%   not compared yet
+Plaza           █░░░░░░░░░  12%   not compared yet
+Raid            █░░░░░░░░░  12%   not compared yet
+Slums           █░░░░░░░░░  12%   not compared yet
+Standoff        █░░░░░░░░░  12%   not compared yet
+Turbine         █░░░░░░░░░  12%   not compared yet
+Yemen           █░░░░░░░░░  12%   not compared yet
+Nuketown 2025   ███████░░░  72%   not compared yet
+Downhill        █░░░░░░░░░  12%   not compared yet
+Mirage          █░░░░░░░░░  12%   not compared yet
+Hydro           █░░░░░░░░░  12%   not compared yet
+Grind           █░░░░░░░░░  12%   not compared yet
+Encore          █░░░░░░░░░  12%   not compared yet
+Magma           █░░░░░░░░░  12%   not compared yet
+Vertigo         █░░░░░░░░░  12%   not compared yet
+Studio          █░░░░░░░░░  12%   not compared yet
+Uplink          █░░░░░░░░░  12%   not compared yet
+Detour          █░░░░░░░░░  12%   not compared yet
+Cove            █░░░░░░░░░  12%   not compared yet
+Rush            █░░░░░░░░░  12%   not compared yet
+Dig             █░░░░░░░░░  12%   not compared yet
+Frost           █░░░░░░░░░  12%   not compared yet
+Pod             █░░░░░░░░░  12%   not compared yet
+Takeoff         █░░░░░░░░░  12%   not compared yet
+All maps        ██░░░░░░░░  15%   not compared yet
+```
+
+Mechanics: each map's systems and modes work by Black Ops II's rules. Visuals: set spots compared side by side with Black Ops II. Scored in [`docs/maps.json`](docs/maps.json) (pass or match 1, part or close half, not yet 0), last updated 2026-10-08; drawn by [`docs/make_bars.py`](docs/make_bars.py).
+<!-- map-bars:end -->
 
 ## Features
 
@@ -121,16 +170,20 @@ only. Like upstream IW4L, much of this code was written by an LLM (Claude), dire
 
 ## Recent changes
 
+- 2026-10-08: other players go prone, dive and climb ladders at Black Ops II's own animation speeds, the
+  VICTORY / DEFEAT banner at match end sits where the original puts it, and the README shows per-map completion
+  bars.
 - 2026-10-08: Frostbite's open sea no longer shows a dark wedge beside the rooftops, and cliffs, rocks and
   mountains on 13+ maps (Hydro, Cove, Drone, Castaway...) draw Black Ops II's own tiled rock detail instead of one
   flat colour.
 
 ## Coming soon
 
-- Every menu and HUD piece one-for-one with the original (defeat screen, end scoreboard).
+- Every menu and HUD piece one-for-one with the original (end scoreboard).
 - Prestige; helicopter and drone engine sounds.
 - The vehicle screens for the ridden scorestreaks.
-- Live sun shadows; prone, dive and ladder animations for other players; ragdoll deaths.
+- Live sun shadows; ragdoll deaths.
+- A per-map test sweep to fill in the mechanics bars; visual comparison shots for each map.
 - Playing together over LAN, and one build with Black Ops II's main menu for both Multiplayer and Zombies.
 
 ## Credits and license

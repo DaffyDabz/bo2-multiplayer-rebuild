@@ -1090,17 +1090,13 @@ fn collect_t6_bodies(
         track.torso.see(torso, now, &script, first);
         // A moving legs animation plays at his speed over its own (feet
         // that keep to the ground); the torso with it when it is the same.
-        let speed = if corpse {
-            0.0
+        let velocity = if corpse {
+            [0.0; 3]
         } else {
-            presented
-                .player(client)
-                .map_or(0.0, |ps| ps.velocity[0].hypot(ps.velocity[1]))
+            presented.player(client).map_or([0.0; 3], |ps| ps.velocity)
         };
         let legs_rate = t6_anim_index(track.legs.cur.value)
-            .map(|a| script.speed_of(a))
-            .filter(|&natural| natural > 1.0 && speed > 1.0)
-            .map_or(1.0, |natural| (speed / natural).clamp(0.3, 3.0));
+            .map_or(1.0, |a| t6_legs_rate(&script, a, velocity));
         // A torso animation timed to the weapon (a reload, a raise or drop)
         // plays over the weapon's time.
         let timed_rate = t6_anim_duration(torso).and_then(|secs| {
@@ -1373,4 +1369,57 @@ fn collect_t6_bodies(
         }
     }
     locals.item_seen.retain(|n, _| seen_items.contains(n));
+}
+
+/// The rate a legs animation plays at, as T5's BG_RunLerpFrameRate does it
+/// (BO2 keeps its script and data): an `animrate` plays at that rate; a
+/// moving animation at his speed over its own (a ladder climb by his
+/// climbing speed, standing still on the rung when he stops: below 0.01 it
+/// stops), held to 0.1 at the least and, above 2, to 4 for a climb, else to
+/// 3 - (its speed - 20) / 130 between 20 and 150 units/s (3 below, 2 above).
+/// Mantle clips are timed by the mantle move itself (its clip lengths), so
+/// their `animrate` is left to that.
+fn t6_legs_rate(script: &sim::t6_playeranim::T6PlayerAnims, anim: u16, velocity: [f32; 3]) -> f32 {
+    let mantle = script.anims.get(usize::from(anim)).is_some_and(|n| n.starts_with("mp_mantle"));
+    if !mantle {
+        if let Some(rate) = script.command_of(anim).and_then(|c| c.anim_rate) {
+            return rate;
+        }
+    }
+    let natural = script.speed_of(anim);
+    if natural <= 0.0 {
+        return 1.0;
+    }
+    let ladder = script.is_ladder(anim);
+    let speed = if ladder {
+        velocity[2].abs()
+    } else {
+        velocity[0].hypot(velocity[1])
+    };
+    // On the ground a body that is not moving keeps its rate (the server
+    // has him idle a tick later).
+    if !ladder && speed <= 1.0 {
+        return 1.0;
+    }
+    t5_speed_scale(speed / natural, natural, ladder)
+}
+
+/// T5 BG_RunLerpFrameRate's limits on a speed-scaled animation rate.
+fn t5_speed_scale(scale: f32, natural: f32, ladder: bool) -> f32 {
+    if scale < 0.1 {
+        return if ladder && scale < 0.01 { 0.0 } else { 0.1 };
+    }
+    if scale <= 2.0 {
+        return scale;
+    }
+    let max = if ladder {
+        4.0
+    } else if natural > 150.0 {
+        2.0
+    } else if natural >= 20.0 {
+        3.0 - (natural - 20.0) / 130.0
+    } else {
+        3.0
+    };
+    scale.min(max)
 }

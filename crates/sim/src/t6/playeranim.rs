@@ -212,8 +212,10 @@ fn movetype(ps: &PlayerState) -> Option<&'static str> {
         return None;
     }
     if ps.pm_flags & pm_flags::LADDER != 0 {
-        // Up unless clearly going down (a still climber holds his rung).
-        return Some(if ps.velocity[2] < -10.0 { "climbdown" } else { "climbup" });
+        // Down while he goes down, else up (T5 PM_LadderMove anim pick:
+        // climbdown when velocity z < 0; a still climber's climb stands
+        // still, its rate follows his climbing speed).
+        return Some(if ps.velocity[2] < 0.0 { "climbdown" } else { "climbup" });
     }
     if !on_ground(ps) {
         return None;
@@ -277,6 +279,7 @@ fn mantle_command(world: &World, script: &T6PlayerAnims, ps: &PlayerState) -> Op
             duration_ms: None,
             weapon_time_scale: false,
             grenade_anim: false,
+            anim_rate: None,
         };
         return Some((command, (up_len - elapsed).max(50)));
     }

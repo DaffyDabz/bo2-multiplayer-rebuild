@@ -352,6 +352,11 @@ pub(crate) fn publish(world: &mut World) {
                 // bo2mp: `hidewheninmenu` (the objective text, the outcome
                 // screen): "m", hidden while his menus are open.
                 if field(vm, o, "hidewheninmenu").as_float().unwrap_or(0.0) != 0.0 { "m".to_owned() } else { String::new() },
+                // bo2mp: the element's `font` (createfontstring's name:
+                // default, objective, big, small, extrabig, bigfixed,
+                // smallfixed), so the drawing side picks BO2's font and size
+                // as the engine does.
+                txt(vm, o, "font", "default"),
             ]
             .join(&FIELD_SEP.to_string());
             rows.push((e.client, e.team.clone(), row, false));
