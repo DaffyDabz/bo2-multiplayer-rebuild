@@ -31,6 +31,9 @@ pub struct T6ScriptSet {
     /// scorestreak helicopters' guns) and how it drives, later zones
     /// replacing earlier.
     pub vehicles: Vec<asset_t6::VehicleRef>,
+    /// bo2mp: BO2's shellshock files (`shock/<name>.shock`): (name, text),
+    /// later zones replacing earlier.
+    pub shocks: Vec<(String, String)>,
     /// bo2mp: the third-person player animation script and its anim type
     /// list (`mp/playeranim.script`, `mp/playeranimtypes.txt`).
     pub playeranim: Option<(String, String)>,

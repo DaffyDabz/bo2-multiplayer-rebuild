@@ -747,6 +747,8 @@ fn perk_bits(name: &str) -> (u32, u32) {
         "specialty_marathon" => movement_iw4::PERK_MARATHON,
         "specialty_bulletaccuracy" => weapon_iw4::PERK_BULLETACCURACY,
         "specialty_pistoldeath" => playerstate_iw4::PERK_PISTOLDEATH,
+        "specialty_fallheight" => movement_iw4::PERK_FALLHEIGHT,
+        "specialty_fastads" => movement_iw4::PERK_FASTADS,
         _ => 0,
     };
     let e_flags = match name {
@@ -805,6 +807,44 @@ pub(crate) fn buttons(world: &mut FrameWorld, id: ClientId) -> u32 {
         .map_or(0, |(_, b)| *b)
 }
 
+/// bo2mp: BO2's `allowprone` / `allowcrouch` / `allowstand` / `allowsprint` /
+/// `allowmelee` / `allowads` (false): the request is dropped before pmove.
+/// Stance requests are held buttons (no button = stand), so a stand that is
+/// not allowed keeps him in the stance he has, or the first allowed one.
+pub(crate) fn apply_allow_controls(
+    controls: &crate::match_state::ScriptControls,
+    pm_flags: u32,
+    cmd: &mut playerstate_iw4::UserCmd,
+) {
+    use playerstate_iw4::{buttons, pm_flags as pmf};
+    if controls.prone_disabled {
+        cmd.buttons &= !buttons::PRONE;
+    }
+    if controls.crouch_disabled {
+        cmd.buttons &= !buttons::CROUCH;
+    }
+    if controls.stand_disabled && cmd.buttons & (buttons::PRONE | buttons::CROUCH) == 0 {
+        let prone_ok = !controls.prone_disabled;
+        let crouch_ok = !controls.crouch_disabled;
+        if pm_flags & pmf::PRONE != 0 && prone_ok {
+            cmd.buttons |= buttons::PRONE;
+        } else if crouch_ok {
+            cmd.buttons |= buttons::CROUCH;
+        } else if prone_ok {
+            cmd.buttons |= buttons::PRONE;
+        }
+    }
+    if controls.sprint_disabled {
+        cmd.buttons &= !buttons::SPRINT;
+    }
+    if controls.melee_disabled {
+        cmd.buttons &= !buttons::MELEE_CHARGE;
+    }
+    if controls.ads_disabled {
+        cmd.buttons &= !buttons::ADS;
+    }
+}
+
 pub(crate) fn constrain_cmd(
     world: &mut FrameWorld,
     id: ClientId,
@@ -844,6 +884,7 @@ pub(crate) fn constrain_cmd(
     if controls.jump_disabled {
         cmd.buttons &= !buttons::JUMP;
     }
+    apply_allow_controls(&controls, world.player(id).map_or(0, |ps| ps.pm_flags), cmd);
     if controls.weapons_disabled {
         cmd.buttons &= !(buttons::ATTACK | buttons::THROW | buttons::ADS | buttons::MELEE_CHARGE);
     }
@@ -857,5 +898,65 @@ pub(crate) fn constrain_cmd(
         cmd.weapon = controls.switch_to as u16;
     } else if controls.switch_disabled || controls.frozen {
         cmd.weapon = held as u16;
+    }
+}
+
+#[cfg(test)]
+mod allow_controls_tests {
+    use super::apply_allow_controls;
+    use crate::match_state::ScriptControls;
+    use playerstate_iw4::{UserCmd, buttons, pm_flags};
+
+    fn cmd(held: u32) -> UserCmd {
+        let mut c = UserCmd::default();
+        c.buttons = held;
+        c
+    }
+
+    #[test]
+    fn allowed_by_default_changes_nothing() {
+        let all = buttons::PRONE | buttons::CROUCH | buttons::SPRINT | buttons::MELEE_CHARGE | buttons::ADS;
+        let mut c = cmd(all);
+        apply_allow_controls(&ScriptControls::default(), 0, &mut c);
+        assert_eq!(c.buttons, all);
+    }
+
+    #[test]
+    fn each_allow_false_drops_its_own_request_only() {
+        let all = buttons::PRONE | buttons::CROUCH | buttons::SPRINT | buttons::MELEE_CHARGE | buttons::ADS;
+        let cases = [
+            (ScriptControls { prone_disabled: true, ..Default::default() }, buttons::PRONE),
+            (ScriptControls { crouch_disabled: true, ..Default::default() }, buttons::CROUCH),
+            (ScriptControls { sprint_disabled: true, ..Default::default() }, buttons::SPRINT),
+            (ScriptControls { melee_disabled: true, ..Default::default() }, buttons::MELEE_CHARGE),
+            (ScriptControls { ads_disabled: true, ..Default::default() }, buttons::ADS),
+        ];
+        for (controls, dropped) in cases {
+            let mut c = cmd(all);
+            apply_allow_controls(&controls, 0, &mut c);
+            assert_eq!(c.buttons, all & !dropped);
+        }
+    }
+
+    #[test]
+    fn allowstand_false_holds_the_stance_he_has() {
+        let controls = ScriptControls { stand_disabled: true, ..Default::default() };
+        // Standing asks for nothing: he is put into a crouch.
+        let mut c = cmd(0);
+        apply_allow_controls(&controls, 0, &mut c);
+        assert_eq!(c.buttons, buttons::CROUCH);
+        // Prone and asking for nothing: he stays prone.
+        let mut c = cmd(0);
+        apply_allow_controls(&controls, pm_flags::PRONE, &mut c);
+        assert_eq!(c.buttons, buttons::PRONE);
+        // No crouch either: prone.
+        let both = ScriptControls { stand_disabled: true, crouch_disabled: true, ..Default::default() };
+        let mut c = cmd(0);
+        apply_allow_controls(&both, 0, &mut c);
+        assert_eq!(c.buttons, buttons::PRONE);
+        // He already asks for a stance: untouched.
+        let mut c = cmd(buttons::CROUCH);
+        apply_allow_controls(&controls, 0, &mut c);
+        assert_eq!(c.buttons, buttons::CROUCH);
     }
 }

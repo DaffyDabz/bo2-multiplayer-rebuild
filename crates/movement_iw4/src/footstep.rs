@@ -160,8 +160,13 @@ pub fn footsteps_bob_cycle(
     almost_ground_plane: bool,
     server_time: i32,
     scales: CmdScaleWalkContext,
+    feel: crate::Bo2Feel, // bo2zm
 ) {
     if ps.pm_type >= 8 {
+        return;
+    }
+    // bo2zm: a dive keeps its own rhythm, in the air too.
+    if feel.on && crate::feel::dive_bob_cycle(ps, msec, feel) {
         return;
     }
     let xyspeed = libm::sqrtf(ps.velocity[0] * ps.velocity[0] + ps.velocity[1] * ps.velocity[1]);
@@ -175,10 +180,28 @@ pub fn footsteps_bob_cycle(
     if airborne {
         return;
     }
-    if xyspeed <= PLAYER_MOVE_THRESHHOLD || ps.pm_type == 1 {
+    let still = if feel.on {
+        xyspeed < crate::feel::PLAYER_MOVE_THRESHHOLD
+    } else {
+        xyspeed <= PLAYER_MOVE_THRESHHOLD
+    };
+    if still || ps.pm_type == 1 {
         return;
     }
     if forwardmove == 0 && rightmove == 0 {
+        return;
+    }
+    if feel.on {
+        crate::feel::bob_cycle(
+            ps,
+            msec,
+            forwardmove,
+            rightmove,
+            xyspeed,
+            server_time,
+            scales,
+            feel,
+        );
         return;
     }
 
@@ -352,7 +375,12 @@ pub fn footstep_event(
     true
 }
 
-pub fn ladder_footsteps(ps: &mut PlayerState, msec: i32, server_time: i32) -> bool {
+pub fn ladder_footsteps(
+    ps: &mut PlayerState,
+    msec: i32,
+    server_time: i32,
+    feel: crate::Bo2Feel, // bo2zm
+) -> bool {
     if (ps.pm_flags & pm_flags::LADDER) == 0 {
         return false;
     }
@@ -360,6 +388,25 @@ pub fn ladder_footsteps(ps: &mut PlayerState, msec: i32, server_time: i32) -> bo
         return false;
     }
 
+    let old = ps.bob_cycle as u8;
+    if feel.on {
+        crate::feel::ladder_bob_cycle(ps, msec);
+    } else {
+        ladder_bob_cycle_iw4(ps, msec);
+    }
+    let new = ps.bob_cycle as u8;
+
+    if !bob_cycle_wrapped(old, new) {
+        return false;
+    }
+    if ps.ground_entity_num != ENTITYNUM_NONE || (ps.pm_flags & pm_flags::LADDER) == 0 {
+        return false;
+    }
+    add_predictable_event(ps, EV_FOOTSTEP_RUN, LADDER_SURFACE_TYPE as i32);
+    true
+}
+
+fn ladder_bob_cycle_iw4(ps: &mut PlayerState, msec: i32) {
     let vz = libm::fabsf(ps.velocity[2]);
     let vxy = libm::sqrtf(ps.velocity[0] * ps.velocity[0] + ps.velocity[1] * ps.velocity[1]);
     let bobmove = if vz >= vxy {
@@ -371,13 +418,4 @@ pub fn ladder_footsteps(ps: &mut PlayerState, msec: i32, server_time: i32) -> bo
     let old = ps.bob_cycle as u8;
     let new = libm::roundf(old as f32 + msec as f32 * bobmove) as i32 as u8;
     ps.bob_cycle = i32::from(new);
-
-    if !bob_cycle_wrapped(old, new) {
-        return false;
-    }
-    if ps.ground_entity_num != ENTITYNUM_NONE || (ps.pm_flags & pm_flags::LADDER) == 0 {
-        return false;
-    }
-    add_predictable_event(ps, EV_FOOTSTEP_RUN, LADDER_SURFACE_TYPE as i32);
-    true
 }

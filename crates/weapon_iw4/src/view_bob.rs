@@ -22,6 +22,9 @@ pub const VIEW_BOB_AMP_PRONE: [f32; 2] = [0.02, 0.005];
 
 pub const VIEW_BOB_AMP_SPRINTING: [f32; 2] = [0.02, 0.014];
 
+/// bo2zm: Black Ops' head bob when prone (bg_viewBobAmplitudeProne).
+pub const VIEW_BOB_AMP_PRONE_BO2: [f32; 2] = [0.08, 0.04];
+
 pub const PERK_LIGHTWEIGHT_VIEW_BOB_SCALE: f32 = 0.75;
 
 pub const PERK_LIGHTWEIGHT_VIEW_BOB_BIT: u32 = 0x0100_0000;
@@ -59,6 +62,9 @@ const OVERLAY_BOB_SIGN: f32 = -1.0;
 pub const BG_VIEW_KICK_SCALE: f32 = 0.2;
 
 pub const BG_VIEW_KICK_MIN: f32 = 5.0;
+
+/// bo2zm: Black Ops' smallest hit flinch (bg_viewKickMin).
+pub const BG_VIEW_KICK_MIN_BO2: f32 = 0.5;
 
 pub const BG_VIEW_KICK_MAX: f32 = 90.0;
 
@@ -101,6 +107,9 @@ pub struct ViewOrgBobInputs {
     pub weapon_pos_frac: f32,
 
     pub perks0: u32,
+
+    /// bo2zm: Black Ops II camera rules (prone bob, no Lightweight shrink).
+    pub bo2: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -132,12 +141,17 @@ fn view_bob_helper_amplitude(
     weapon_pos_frac: f32,
     xyspeed: f32,
     perks0: u32,
+    bo2: bool,
     horizontal: bool,
 ) -> f32 {
     let idx = if horizontal { 0 } else { 1 };
     let ads = weapon_pos_frac;
     let scale = if view_height_target == VIEWHEIGHT_TARGET_PRONE {
-        VIEW_BOB_AMP_PRONE[idx]
+        if bo2 {
+            VIEW_BOB_AMP_PRONE_BO2[idx]
+        } else {
+            VIEW_BOB_AMP_PRONE[idx]
+        }
     } else if view_height_target == VIEWHEIGHT_TARGET_CROUCH {
         (1.0 - ads) * VIEW_BOB_AMP_DUCKED[idx] + ads * VIEW_BOB_AMP_DUCKED_ADS[idx]
     } else if (pm_flags & pm_flags::SPRINTING) == 0 {
@@ -146,7 +160,7 @@ fn view_bob_helper_amplitude(
         VIEW_BOB_AMP_SPRINTING[idx]
     };
     let mut amp = scale * xyspeed;
-    if (perks0 & PERK_LIGHTWEIGHT_VIEW_BOB_BIT) != 0 {
+    if !bo2 && (perks0 & PERK_LIGHTWEIGHT_VIEW_BOB_BIT) != 0 {
         amp *= PERK_LIGHTWEIGHT_VIEW_BOB_SCALE;
     }
     if amp > VIEW_BOB_MAX {
@@ -162,6 +176,7 @@ pub fn calc_view_bob_pitch(cycle: f32, inputs: ViewOrgBobInputs) -> f32 {
         inputs.weapon_pos_frac,
         inputs.xyspeed,
         inputs.perks0,
+        inputs.bo2,
         false,
     );
     (view_bob_sinf(cycle * f64_as_f32(VERT_CYCLE_MUL_F64) + f64_as_f32(HALF_PI_F64))
@@ -178,6 +193,7 @@ pub fn calc_view_bob_roll(cycle: f32, inputs: ViewOrgBobInputs) -> f32 {
         inputs.weapon_pos_frac,
         inputs.xyspeed,
         inputs.perks0,
+        inputs.bo2,
         true,
     );
     view_bob_sinf(cycle) * amp
@@ -209,13 +225,14 @@ pub fn crash_land_fall_height(
     Some((land_vel * land_vel) / ((gravity as f32) * LAND_FALL_TWO))
 }
 
-pub fn crash_land_view_dip(fall_height: f32) -> i32 {
+pub fn crash_land_view_dip(fall_height: f32, bo2: bool) -> i32 {
     if !(fall_height > LAND_VIEW_DIP_FALL_IN) {
         return 0;
     }
     let raw = (fall_height - LAND_VIEW_DIP_FALL_IN) / LAND_VIEW_DIP_SPAN_IN * LAND_VIEW_DIP_SCALE
         + LAND_VIEW_DIP_SCALE;
-    let n = libm::roundf(raw) as i32;
+    // bo2zm: Black Ops II drops the fraction instead of rounding.
+    let n = if bo2 { raw as i32 } else { libm::roundf(raw) as i32 };
     if n > LAND_VIEW_DIP_MAX {
         LAND_VIEW_DIP_MAX
     } else if n < 0 {
@@ -413,9 +430,13 @@ fn view_ads_bob_angles(angles: &mut ViewAngleBob, inputs: ViewAngleBobInputs) {
 }
 
 pub fn view_kick_amplitude(damage_count: i32) -> f32 {
+    view_kick_amplitude_min(damage_count, BG_VIEW_KICK_MIN)
+}
+
+fn view_kick_amplitude_min(damage_count: i32, kick_min: f32) -> f32 {
     let scaled = damage_count as f32 * BG_VIEW_KICK_SCALE;
-    if scaled < BG_VIEW_KICK_MIN {
-        BG_VIEW_KICK_MIN
+    if scaled < kick_min {
+        kick_min
     } else if scaled > BG_VIEW_KICK_MAX {
         BG_VIEW_KICK_MAX
     } else {
@@ -435,7 +456,25 @@ pub fn damage_feedback_kick(
     damage_count: i32,
     viewangles: [f32; 3],
 ) -> ViewDamageFeedback {
-    let kick = view_kick_amplitude(damage_count);
+    damage_feedback_kick_min(
+        yaw_byte,
+        pitch_byte,
+        damage_count,
+        viewangles,
+        BG_VIEW_KICK_MIN,
+    )
+}
+
+/// bo2zm: `damage_feedback_kick` with the smallest flinch given
+/// (`BG_VIEW_KICK_MIN_BO2` for Black Ops II).
+pub fn damage_feedback_kick_min(
+    yaw_byte: u32,
+    pitch_byte: u32,
+    damage_count: i32,
+    viewangles: [f32; 3],
+    kick_min: f32,
+) -> ViewDamageFeedback {
+    let kick = view_kick_amplitude_min(damage_count, kick_min);
     if yaw_byte == VIEW_DAMAGE_UNDIRECTED && pitch_byte == VIEW_DAMAGE_UNDIRECTED {
         return ViewDamageFeedback {
             v_dmg_pitch: -kick,
@@ -549,4 +588,59 @@ pub fn view_angle_bob(inputs: ViewAngleBobInputs) -> ViewAngleBob {
     view_overlay_bob_angles(&mut angles, inputs);
     view_ads_bob_angles(&mut angles, inputs);
     angles
+}
+
+#[cfg(test)]
+mod bo2_tests {
+    use super::*;
+
+    #[test]
+    fn landing_dip_drops_the_fraction_in_bo2() {
+        // 22 units: 5.54 steps of dip.
+        assert_eq!(crash_land_view_dip(22.0, true), 5);
+        assert_eq!(crash_land_view_dip(22.0, false), 6);
+        assert_eq!(crash_land_view_dip(500.0, true), 24);
+    }
+
+    fn prone(bo2: bool, perks0: u32) -> ViewOrgBobInputs {
+        ViewOrgBobInputs {
+            xyspeed: 20.0,
+            view_height_target: 0x0b,
+            perks0,
+            bo2,
+            ..ViewOrgBobInputs::default()
+        }
+    }
+
+    #[test]
+    fn prone_head_bob_is_black_ops_size() {
+        // Peak of the side to side sway: amplitude x speed 20.
+        let side = |i: ViewOrgBobInputs| calc_view_bob_roll(core::f32::consts::FRAC_PI_2, i);
+        assert!((side(prone(true, 0)) - 0.08 * 20.0).abs() < 1e-4);
+        assert!((side(prone(false, 0)) - 0.02 * 20.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn lightweight_does_not_shrink_bo2_head_bob() {
+        let side = |i: ViewOrgBobInputs| calc_view_bob_roll(core::f32::consts::FRAC_PI_2, i);
+        let lw = PERK_LIGHTWEIGHT_VIEW_BOB_BIT;
+        assert_eq!(side(prone(true, lw)), side(prone(true, 0)));
+        assert!(side(prone(false, lw)) < side(prone(false, 0)));
+    }
+
+    #[test]
+    fn small_hits_flinch_less_in_bo2() {
+        let hit = |min| {
+            damage_feedback_kick_min(
+                VIEW_DAMAGE_UNDIRECTED,
+                VIEW_DAMAGE_UNDIRECTED,
+                10,
+                [0.0; 3],
+                min,
+            )
+        };
+        // 10 damage x 0.2 = 2: Black Ops keeps 2, MW2 raises it to 5.
+        assert_eq!(hit(BG_VIEW_KICK_MIN_BO2).v_dmg_pitch, -2.0);
+        assert_eq!(hit(BG_VIEW_KICK_MIN).v_dmg_pitch, -5.0);
+    }
 }

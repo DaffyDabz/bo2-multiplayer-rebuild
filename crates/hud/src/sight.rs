@@ -68,6 +68,7 @@ pub(crate) fn update_sight(
                 picture: Handle::default(),
                 uv: Vec4::new(0.0, 0.0, 1.0, 1.0),
                 encoded: 0.0,
+                color_add: 0.0,
             })),
             FocusPolicy::Pass,
             ZIndex(0),

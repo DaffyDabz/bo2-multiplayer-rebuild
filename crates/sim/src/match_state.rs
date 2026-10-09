@@ -162,6 +162,14 @@ pub struct ScriptControls {
     pub usability_disabled: bool,
     pub linked: bool,
     pub stunned: bool,
+    /// BO2 `allowprone` / `allowcrouch` / `allowstand` / `allowsprint` /
+    /// `allowmelee` / `allowads` (false): the server drops that request.
+    pub prone_disabled: bool,
+    pub crouch_disabled: bool,
+    pub stand_disabled: bool,
+    pub sprint_disabled: bool,
+    pub melee_disabled: bool,
+    pub ads_disabled: bool,
     pub switch_to: u32,
 }
 

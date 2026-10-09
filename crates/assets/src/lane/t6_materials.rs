@@ -1352,6 +1352,44 @@ pub(crate) fn is_additive(material: &asset_t6::MaterialRef) -> bool {
     (0..36).filter_map(|t| material.draw_state(t)).any(|d| d.dst_blend == 2 && matches!(d.src_blend, 2 | 5))
 }
 
+/// bo2mp vehicle screens: a 2D material's AddMap picture (texture name
+/// hash 0xe98a255d, the `sw4_2d_color_add` pixel shader's `AddMap`, t0),
+/// when it has one: the VTOL Warship's reticles (`mp_hud_sentry_outer_white`
+/// = `mp_hud_sentry_outer_blend` colour map + `mp_hud_sentry_outer_add`).
+pub(crate) fn add_map<'a>(material: &asset_t6::MaterialRef, capture: &'a ZoneCapture) -> Option<&'a ImageRef> {
+    let t = material.textures.iter().find(|t| t.name_hash == ADD_MAP_HASH)?;
+    capture.images.get(t.image?.index)
+}
+
+const ADD_MAP_HASH: u32 = 0xe98a_255d;
+
+/// bo2mp vehicle screens: BO2's `sw4_2d_color_add` pixel shader reads only
+/// the colour map's alpha (`rgb = (ColorMap.a * colour.rgb + AddMap.rgb) *
+/// colour.a`, blend ONE/ONE). Packed: (AddMap colour, colour map alpha) for
+/// the additive pass, and a white-lit flat copy (colour map alpha plus the
+/// AddMap's colour as brightness-alpha) for layers that only alpha-blend.
+pub(crate) fn pack_color_add(color: &Image, added: &Image) -> Option<(Image, Image)> {
+    let (w, h, mut rgba) = top_level_rgba8(color)?;
+    let (aw, ah, add) = top_level_rgba8(added)?;
+    let mut flat = rgba.clone();
+    for y in 0..h {
+        for x in 0..w {
+            let i = (y * w + x) * 4;
+            // (The AddMap read at the same place, nearest texel.)
+            let j = ((y * ah / h) * aw + x * aw / w) * 4;
+            let a = rgba[i + 3];
+            for c in 0..3 {
+                rgba[i + c] = add[j + c];
+                flat[i + c] = a.saturating_add(add[j + c]);
+            }
+            flat[i + 3] = 255;
+        }
+    }
+    let packed = rgba8_image(color, w, h, rgba);
+    let flat = additive_to_alpha(&rgba8_image(color, w, h, flat))?;
+    Some((packed, flat))
+}
+
 /// bo2zm M4: an additive picture for a 2D layer that only alpha-blends: its
 /// top level as RGBA with the brightness as alpha (black = see-through),
 /// colour divided back out.

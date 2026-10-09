@@ -23,7 +23,7 @@ use crate::occupancy::remote_body::RemotePlayer;
 use crate::occupancy::third_person::presented_is_third_person;
 use crate::occupancy::view_kick::{
     GunOffset, PendingViewHurt, SessionViewKick, apply_cg_gun_offset_view,
-    apply_viewweapon_land_view, iw_view_placement_to_bevy_camera_local,
+    apply_viewweapon_land_view, bo2_camera, iw_view_placement_to_bevy_camera_local,
     reset_view_kick_on_life_started, sync_camera_from_presented, tick_session_view_kick,
 };
 use crate::{fpv_dobj_skel_radii, viewmodel_lighting_origin};
@@ -38,7 +38,7 @@ use render_scene::WorldScriptModelInstance;
 use render_scene::{FlyCamera, FpvLens};
 use render_scene::{HostGfxScene, scene_quat_from_viewmodel_axes};
 use weapon_iw4::{
-    GunKickSpring, GunRecoilPlacementState, PLACEMENT_ASSEMBLE_STEP_COUNT,
+    Bo2GunBob, GunKickSpring, GunRecoilPlacementState, PLACEMENT_ASSEMBLE_STEP_COUNT,
     StanceTransitionFadeGlobals, WeaponBobInputs, WeaponBobWaveformInputs,
     WeaponMovementKinematics, WeaponPlacementAssembleStep, WeaponPlacementPsInputs,
     WeaponPlacementState, WeaponStanceStaticOfsInputs, calculate_weapon_movement_bob_waveform,
@@ -984,6 +984,10 @@ pub fn apply_fpv_placement(
         view_height_target: ps.view_height_target,
         pm_flags: ps.pm_flags,
         weapon_pos_frac: ps.f_weapon_pos_frac,
+        bo2_gun: bo2_camera(&kick).then_some(Bo2GunBob {
+            sprint: facts.bob.sprint_bob,
+            dtp: facts.bob.dtp_bob,
+        }),
     });
     let hip = GunKickSpring {
         accel: facts.kick.hip_gun_kick_accel,

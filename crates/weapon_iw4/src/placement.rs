@@ -32,6 +32,14 @@ pub const WEAPON_BOB_AMP_PRONE: [f32; 2] = [0.02, 0.005];
 
 pub const WEAPON_BOB_AMP_SPRINTING: [f32; 2] = [0.02, 0.014];
 
+/// bo2zm: bg_weaponBobAmplitudeDtp, gun bob during a dive to prone
+/// (0.002 until read from real BO2).
+pub const WEAPON_BOB_AMP_DTP: [f32; 2] = [0.002, 0.002];
+
+/// bo2zm: the movement flags of a dive to prone, in the air and sliding
+/// (movement_iw4::dive PMF_DIVE | PMF_DIVE_SLIDE).
+const PMF_DIVE_ANY: u32 = 0x0100_0000 | 0x0200_0000;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct WeaponBobState {
     pub pitch: f32,
@@ -157,6 +165,18 @@ pub struct WeaponBobWaveformInputs {
     pub pm_flags: u32,
 
     pub weapon_pos_frac: f32,
+
+    /// bo2zm: the Black Ops II gun's own bob. None = the MW2 gun bob.
+    pub bo2_gun: Option<Bo2GunBob>,
+}
+
+/// bo2zm: Black Ops II per-gun bob from the weapon file: vSprintBob while
+/// sprinting, vDtpBob during a dive to prone (side, up).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Bo2GunBob {
+    pub sprint: [f32; 2],
+
+    pub dtp: [f32; 2],
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -347,17 +367,21 @@ fn weapon_bob_helper_amplitude(
     weapon_pos_frac: f32,
     speed: f32,
     horizontal: bool,
+    bo2_gun: Option<Bo2GunBob>,
 ) -> f32 {
     let idx = if horizontal { 0 } else { 1 };
     let ads_inner = 1.0 - weapon_pos_frac;
-    let scale = if view_height_target == VIEWHEIGHT_TARGET_PRONE {
+    let dive = bo2_gun.filter(|_| (pm_flags & PMF_DIVE_ANY) != 0);
+    let scale = if let Some(gun) = dive {
+        WEAPON_BOB_AMP_DTP[idx] * gun.dtp[idx]
+    } else if view_height_target == VIEWHEIGHT_TARGET_PRONE {
         WEAPON_BOB_AMP_PRONE[idx]
     } else if view_height_target == VIEWHEIGHT_TARGET_CROUCH {
         ads_inner * WEAPON_BOB_AMP_DUCKED[idx]
     } else if (pm_flags & pm_flags::SPRINTING) == 0 {
         ads_inner * WEAPON_BOB_AMP_STANDING[idx]
     } else {
-        WEAPON_BOB_AMP_SPRINTING[idx]
+        WEAPON_BOB_AMP_SPRINTING[idx] * bo2_gun.map_or(1.0, |gun| gun.sprint[idx])
     };
     let mut amp = speed * scale;
     if amp > WEAPON_BOB_MAX {
@@ -372,9 +396,16 @@ fn calc_weapon_bob_vertical(
     view_height_target: i32,
     pm_flags: u32,
     weapon_pos_frac: f32,
+    bo2_gun: Option<Bo2GunBob>,
 ) -> f32 {
-    let amp =
-        weapon_bob_helper_amplitude(view_height_target, pm_flags, weapon_pos_frac, speed, false);
+    let amp = weapon_bob_helper_amplitude(
+        view_height_target,
+        pm_flags,
+        weapon_pos_frac,
+        speed,
+        false,
+        bo2_gun,
+    );
     (weapon_bob_sinf(cycle * 4.0 + FRAC_PI_2) * 0.2 + weapon_bob_sinf(cycle + cycle)) * 0.75 * amp
 }
 
@@ -384,9 +415,16 @@ fn calc_weapon_bob_horizontal(
     view_height_target: i32,
     pm_flags: u32,
     weapon_pos_frac: f32,
+    bo2_gun: Option<Bo2GunBob>,
 ) -> f32 {
-    let amp =
-        weapon_bob_helper_amplitude(view_height_target, pm_flags, weapon_pos_frac, speed, true);
+    let amp = weapon_bob_helper_amplitude(
+        view_height_target,
+        pm_flags,
+        weapon_pos_frac,
+        speed,
+        true,
+        bo2_gun,
+    );
     weapon_bob_sinf(cycle) * amp
 }
 
@@ -400,6 +438,7 @@ pub fn calculate_weapon_movement_bob_waveform(inputs: WeaponBobWaveformInputs) -
         inputs.view_height_target,
         inputs.pm_flags,
         inputs.weapon_pos_frac,
+        inputs.bo2_gun,
     ) * -1.0;
     let yaw = calc_weapon_bob_horizontal(
         cycle,
@@ -407,6 +446,7 @@ pub fn calculate_weapon_movement_bob_waveform(inputs: WeaponBobWaveformInputs) -
         inputs.view_height_target,
         inputs.pm_flags,
         inputs.weapon_pos_frac,
+        inputs.bo2_gun,
     ) * -1.0;
     let mut roll = calc_weapon_bob_horizontal(
         cycle - WEAPON_BOB_UP_PHASE,
@@ -414,6 +454,7 @@ pub fn calculate_weapon_movement_bob_waveform(inputs: WeaponBobWaveformInputs) -
         inputs.view_height_target,
         inputs.pm_flags,
         inputs.weapon_pos_frac,
+        inputs.bo2_gun,
     );
 
     if (roll < 0.0) == (roll == 0.0) {
@@ -808,4 +849,38 @@ pub fn dual_wield_view_model_origin_add(hand: i32, right: [f32; 3], offset: f32)
     };
     let s = offset * scale;
     [right[0] * s, right[1] * s, right[2] * s]
+}
+
+#[cfg(test)]
+mod bo2_gun_bob_tests {
+    use super::*;
+
+    fn side(pm_flags: u32, bo2_gun: Option<Bo2GunBob>) -> f32 {
+        weapon_bob_helper_amplitude(60, pm_flags, 0.0, 20.0, true, bo2_gun)
+    }
+
+    #[test]
+    fn rifles_do_not_bob_while_sprinting_in_bo2() {
+        let rifle = Some(Bo2GunBob::default());
+        let pistol = Some(Bo2GunBob {
+            sprint: [1.0, 1.0],
+            dtp: [1.0, 1.0],
+        });
+        let sprint = pm_flags::SPRINTING;
+        assert_eq!(side(sprint, rifle), 0.0);
+        assert!((side(sprint, pistol) - 0.02 * 20.0).abs() < 1e-6);
+        assert!((side(sprint, None) - 0.02 * 20.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn diving_uses_the_gun_dive_bob_in_bo2() {
+        let pistol = Some(Bo2GunBob {
+            sprint: [1.0, 1.0],
+            dtp: [1.0, 1.0],
+        });
+        assert!((side(PMF_DIVE_ANY, pistol) - 0.002 * 20.0).abs() < 1e-6);
+        assert_eq!(side(PMF_DIVE_ANY, Some(Bo2GunBob::default())), 0.0);
+        // MW2 gun bob ignores the dive.
+        assert!((side(PMF_DIVE_ANY, None) - 0.055 * 20.0).abs() < 1e-6);
+    }
 }

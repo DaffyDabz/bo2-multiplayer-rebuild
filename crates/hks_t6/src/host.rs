@@ -48,6 +48,11 @@ pub struct EngineValues {
     pub safe_area: (f32, f32),
     /// Each bound command's keys, as shown (`+actionslot 4` -> `4`).
     pub binds: HashMap<String, Vec<String>>,
+    /// bo2mp vehicle screens: while he rides, the commands BO2 puts on the
+    /// keys he has for a vehicle button's command (CG_UpdateVehicleBindings:
+    /// `+vehiclemoveup` on the keys of `+frag` for the Dragonfire's
+    /// RSHLDR), as `vehicle command -> command it takes its keys from`.
+    pub vehicle_binds: HashMap<String, String>,
     /// The session's modes (`CoD.SESSIONMODE_*` numbers): an offline game.
     pub session_modes: Vec<f32>,
     /// An enum dvar's choices (`Dvar.<name>:getDomainEnumStrings()`).
@@ -58,13 +63,51 @@ pub struct EngineValues {
     /// bo2mp: the zones' config files by lower-case name, for the menus'
     /// `exec <file>` (`run_command`).
     pub configs: HashMap<String, String>,
+    /// bo2mp: the stats commands those lines ran (`STAT_COMMANDS`), in
+    /// order, for the stats' owner to carry out (`hks_t6::mp`).
+    pub stat_commands: Vec<String>,
+}
+
+/// bo2mp: BO2's console commands that write his stats (mp/prestige_reset.cfg,
+/// mp/reset_classes.cfg, mp/reset_classes_offline.cfg and the Prestige
+/// menus' `Engine.ExecNow`): `run_command` queues them in
+/// `EngineValues::stat_commands`.
+pub const STAT_COMMANDS: [&str; 10] = [
+    "equipdefaultclass",
+    "equipdefaultclasstoprofile",
+    "setstatfromlocstring",
+    "setprofilelocclass",
+    "statwriteddl",
+    "prestigestatsreset",
+    "prestigerequest",
+    "prestigestatsresetall",
+    "prestigerespec",
+    "prestigeaddcac",
+];
+
+/// A config line's value: a number or word as written, or BO2's
+/// `( dvarInt( <name> ) )` / `( dvarBool( <name> ) )` read from the dvars
+/// (mp/prestige_reset.cfg puts `systemlink` back that way).
+fn config_value(values: &RefCell<EngineValues>, text: &str) -> String {
+    let t = text.trim().trim_matches('"');
+    let squeezed: String = t.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_ascii_lowercase();
+    for f in ["dvarint", "dvarbool"] {
+        if let Some(name) = squeezed.strip_prefix(&format!("({f}(")).and_then(|r| r.strip_suffix("))")) {
+            let v = values.borrow();
+            let hit = v.dvars.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, x)| x.clone());
+            let n = hit.and_then(|x| x.trim().parse::<f32>().ok()).unwrap_or(0.0);
+            return format!("{}", n as i64);
+        }
+    }
+    t.to_owned()
 }
 
 /// bo2mp: carry out a console command line the menus run
 /// (`Engine.Exec` / `Engine.ExecNow`) that changes engine values here:
 /// `exec <file>` runs that config file's lines, `set` / `seta` / `sets`
-/// <dvar> <value> sets a dvar. Others (`reset`, `restoreDvars`, binds,
-/// stats commands) are left to the owner. Returns whether it ran one.
+/// <dvar> <value> sets a dvar, a stats command (`STAT_COMMANDS`) is queued
+/// for the stats' owner. Others (`reset`, `restoreDvars`, binds) are left
+/// to the owner. Returns whether it ran one.
 pub fn run_command(values: &RefCell<EngineValues>, line: &str) -> bool {
     run_command_depth(values, line, 0)
 }
@@ -102,14 +145,28 @@ fn run_command_depth(values: &RefCell<EngineValues>, line: &str, depth: usize) -
             }
             "set" | "seta" | "sets" => {
                 let Some(name) = words.next() else { continue };
-                let value = words.collect::<Vec<_>>().join(" ");
-                values.borrow_mut().dvars.insert(name.to_owned(), value.trim_matches('"').to_owned());
+                let value = config_value(values, &words.collect::<Vec<_>>().join(" "));
+                values.borrow_mut().dvars.insert(name.to_owned(), value);
+                ran = true;
+            }
+            v if STAT_COMMANDS.contains(&v) => {
+                values.borrow_mut().stat_commands.push(cmd.to_owned());
                 ran = true;
             }
             _ => {}
         }
     }
     ran
+}
+
+impl EngineValues {
+    /// The keys a command is on: his own binds for it, else (in a vehicle)
+    /// the keys of the command its vehicle button stands for.
+    pub fn keys_of(&self, command: &str) -> Option<&Vec<String>> {
+        self.binds
+            .get(command)
+            .or_else(|| self.vehicle_binds.get(command).and_then(|from| self.binds.get(from)))
+    }
 }
 
 /// What the scripts asked the engine to do (the host's owner carries it
@@ -399,6 +456,26 @@ impl Host {
                 };
                 text = text.replace(&format!("&&{i}"), &s);
             }
+            // bo2mp vehicle screens: a `[{+command}]` in the text is the key
+            // his binds put that command on, by its KEY_* name ("Hold [F] to
+            // Exit", the VTOL Warship's MP_CHOPPER_GUNNER_* prompts); a
+            // command with no key shows BO2's own KEY_UNBOUND text
+            // ("UNBOUND", the word its Controls rows show for one).
+            let mut from = 0;
+            while let Some(start) = text[from..].find("[{").map(|s| s + from) {
+                let Some(len) = text[start..].find("}]") else { break };
+                let cmd = text[start + 2..start + len].to_owned();
+                let key = v.borrow().keys_of(&cmd).and_then(|k| k.first().cloned());
+                let name = match key {
+                    Some(key) => {
+                        let up = key.to_uppercase();
+                        v.borrow().localize.get(&format!("KEY_{up}")).cloned().unwrap_or(up)
+                    }
+                    None => v.borrow().localize.get("KEY_UNBOUND").cloned().unwrap_or_else(|| "UNBOUND".to_owned()),
+                };
+                text.replace_range(start..start + len + 2, &format!("[{name}]"));
+                from = start + name.len() + 2;
+            }
             Ok(vec![Value::str(&text)])
         });
         set_field(&engine, "Localize", f);
@@ -539,13 +616,15 @@ impl Host {
                 let at = a.iter().position(|x| x.as_str().is_some());
                 let cmd = at.and_then(|i| a[i].as_str()).unwrap_or("").to_owned();
                 let index = at.and_then(|i| a.get(i + 1)).and_then(Value::as_num).map_or(0, |n| n as usize);
-                let keys: Vec<String> = v.borrow().binds.get(&cmd).map(|k| k.iter().skip(index).cloned().collect()).unwrap_or_default();
+                let keys: Vec<String> = v.borrow().keys_of(&cmd).map(|k| k.iter().skip(index).cloned().collect()).unwrap_or_default();
                 let key = keys.first().cloned().unwrap_or_default();
                 // The Controls rows ask with every flag (nine arguments) and
-                // show what comes back: BO2 says UNBOUND for a command with
-                // no key (the footer prompts ask with three and want "").
+                // show what comes back: BO2 says UNBOUND (its KEY_UNBOUND
+                // text) for a command with no key (the footer prompts ask
+                // with three and want "").
                 if key.is_empty() && a.len() >= 9 {
-                    return Ok(vec![Value::str("UNBOUND")]);
+                    let unbound = v.borrow().localize.get("KEY_UNBOUND").cloned();
+                    return Ok(vec![Value::str(unbound.as_deref().unwrap_or("UNBOUND"))]);
                 }
                 if a.len() < 9 {
                     return Ok(vec![Value::str(&key.to_uppercase())]);

@@ -218,6 +218,22 @@ pub(super) fn sync(world: &mut World) {
     }
 }
 
+/// A shellshock that has run its time ends (the engine clears it; the
+/// script's `stopshellshock` does the same earlier).
+pub(super) fn shock_tick(world: &mut World) {
+    let level = crate::level_time_ms(super::tick(world));
+    let ended: Vec<u32> = world
+        .resource::<Zm>()
+        .players
+        .iter()
+        .filter(|(_, p)| p.shock.as_ref().is_some_and(|(_, end)| *end < level))
+        .map(|(c, _)| *c)
+        .collect();
+    for c in ended {
+        super::natives_player::end_shock(world, c, "time ran out");
+    }
+}
+
 /// What his weapon did since last tick, as the engine tells scripts:
 /// `weapon_switch_started`, `weapon_change` (a new weapon in hand),
 /// `weapon_change_complete` (raised), `weapon_fired`, `reload_start`,

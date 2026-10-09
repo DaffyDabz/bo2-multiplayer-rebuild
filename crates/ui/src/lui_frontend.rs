@@ -229,6 +229,9 @@ pub(crate) fn tick(
     commands: &mut Commands,
     swap: Option<&mut session::SessionSwapRequest>,
 ) {
+    for line in std::mem::take(&mut mp.borrow_mut().stat_log) {
+        diag::info!(Ui, "bo2mp stats command: {line}");
+    }
     if mp.borrow_mut().take_dirty() {
         match mp.borrow().profile.save_file(&front.stats_path) {
             Ok(()) => diag::info!(Ui, "bo2mp front end: stats saved to {}", front.stats_path.display()),
@@ -379,6 +382,14 @@ pub(crate) struct MatchValues {
     /// BO2's BIT_IS_SCOPED (its HUD hides the minimap and voice dock).
     /// Not a dvar: the HUD sets it from his player state.
     pub scoped: bool,
+    /// bo2mp vehicle screens: the scorestreak vehicle he rides ("<vehicle
+    /// type> <seat>", sim `ride.rs`'s `bo2mp_vehicle`; "" on foot):
+    /// BIT_IN_VEHICLE and BO2's killstreak HUD (`hud_update_killstreak_hud`).
+    pub vehicle: String,
+    /// bo2mp vehicle screens: the server's vision for him (`bo2mp_vision`,
+    /// `setvisionsetforplayer` while `useservervisionset` is on; "" the
+    /// map's own): his frame's grade.
+    pub vision: String,
 }
 
 /// His minimap this frame: the map's picture and the world corners it
@@ -535,6 +546,8 @@ impl MatchValues {
             killcam: s("bo2mp_killcam"),
             hud_hidden: dvars.string("bo2zm_hud_hidden") == Some("1"),
             scoped: false,
+            vehicle: s("bo2mp_vehicle"),
+            vision: s("bo2mp_vision"),
         })
     }
 
@@ -998,6 +1011,81 @@ pub(crate) fn match_events(host: &mut Host, seen: &mut MatchSeen, old: Option<&M
             }
         }
         host.root_event(&format!("hud_update_bit_{bit}"), &[("controller", Value::Num(0.0))]);
+    }
+    // bo2mp vehicle screens: riding a scorestreak vehicle. BO2's HUD hides
+    // its ammo, score, game type and scorestreak parts on BIT_IN_VEHICLE
+    // (ui_mp/t6/hud/ammoarea.lua, scorearea.lua, scorebottomleft.lua,
+    // gametypebase.lua, rewardselection.lua), and its own screen for the
+    // VTOL Warship's gunner (heli_player_gunner_mp, _helicopter_gunner.gsc)
+    // is CoD.ChopperGunnerHUD, which hud.lua opens on
+    // `hud_update_killstreak_hud` with chopperGunner set and closes on it
+    // unset (airvehiclehud.lua UpdateKillstreakHUD).
+    if changed(|v| &v.vehicle) {
+        let riding = !new.vehicle.trim().is_empty();
+        let gunner = new.vehicle.split_whitespace().next() == Some("heli_player_gunner_mp");
+        // The Hellstorm (remote_missile_mp, _remotemissile.gsc) is not a
+        // vehicle seat: BO2's HUD hides its ammo and score parts on
+        // BIT_IN_GUIDED_MISSILE and opens PredatorHUD (predatorhud.lua) on
+        // `hud_update_killstreak_hud` with predator set.
+        let missile = new.vehicle.split_whitespace().next() == Some("remote_missile_mp");
+        diag::info!(
+            Ui,
+            "bo2mp hud: vehicle {:?} (chopper gunner screen {gunner}, hellstorm screen {missile})",
+            new.vehicle
+        );
+        // His keys for the vehicle's own commands: BO2 binds each (up, down,
+        // change seat, attack, attack 2) on the keys he has for the command
+        // its button stands for (CG_UpdateVehicleBindings), the prompts'
+        // `[{+vehiclemoveup}]` and `[{+weapnext_inventory}]`.
+        {
+            let mut v = host.values.borrow_mut();
+            v.vehicle_binds.clear();
+            let mut words = new.vehicle.split_whitespace().skip(2);
+            for command in ["+vehiclemoveup", "+vehiclemovedown", "+switchseat", "+vehicleattack", "+vehicleattacksecond"] {
+                if let Some(from) = words.next().filter(|w| *w != "-") {
+                    v.vehicle_binds.insert(command.to_owned(), from.to_owned());
+                }
+            }
+        }
+        for (bit_name, on) in [("BIT_IN_VEHICLE", riding && !missile), ("BIT_IN_GUIDED_MISSILE", missile)] {
+            let Some(bit) = host.field("CoD", bit_name).as_num().map(|n| n as i32) else {
+                continue;
+            };
+            {
+                let mut v = host.values.borrow_mut();
+                if on {
+                    v.bits.insert(bit);
+                } else {
+                    v.bits.remove(&bit);
+                }
+            }
+            host.root_event(&format!("hud_update_bit_{bit}"), &[("controller", Value::Num(0.0))]);
+        }
+        host.root_event(
+            "hud_update_killstreak_hud",
+            &[
+                ("controller", Value::Num(0.0)),
+                ("chopperGunner", Value::Bool(gunner)),
+                ("reaper", Value::Bool(false)),
+                ("predator", Value::Bool(missile)),
+            ],
+        );
+        // The drones' own screens: hud.lua's `hud_update_vehicle` closes the
+        // last vehicle screen and opens `LUI.createMenu[vehicleType]`, which
+        // BO2 has for the Dragonfire (qrdrone_mp, hud/qrdrone.lua) and the
+        // AGR (ai_tank_drone_mp, hud/aitank.lua); on foot there is no type.
+        // Sent after the killstreak event, which AirVehicleHUD screens also
+        // hear.
+        let kind = new.vehicle.split_whitespace().next().filter(|_| !missile).unwrap_or("");
+        let mut fields = vec![("controller", Value::Num(0.0))];
+        if !kind.is_empty() {
+            fields.push(("vehicleType", Value::str(kind)));
+        }
+        host.root_event("hud_update_vehicle", &fields);
+    }
+    if changed(|v| &v.vision) {
+        let found = asset_world::set_t6_player_vision(&new.vision);
+        diag::info!(Ui, "bo2mp hud: server vision {:?} (vision found: {found})", new.vision);
     }
     if changed(|v| &v.settings) {
         apply_settings(host, mp, &new.settings);

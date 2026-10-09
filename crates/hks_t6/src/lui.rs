@@ -901,6 +901,15 @@ pub fn install(vm: &mut Vm) {
         "updateElementLayout",
         "layoutChildren",
         "setRoot",
+        // bo2mp vehicle screens: the air vehicles' HUD parts the engine moves
+        // (ui_mp/t6/hud/choppergunnerhud.lua, airvehiclehud.lua): a container
+        // turned with the vehicle's roll, one scaled with its zoom, the pitch
+        // meters and the distance readout. Each keeps its kind and draws as
+        // set at rest (level, unzoomed).
+        "setupRollLevel",
+        "setupADSContainer",
+        "setupPitchMeter",
+        "setupCrosshairDistance",
     ] {
         reg(vm, n, name, |_, _| Ok(vec![]));
     }

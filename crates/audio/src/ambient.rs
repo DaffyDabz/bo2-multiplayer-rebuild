@@ -37,6 +37,9 @@ pub struct MapEmitter {
     pub knots: Arc<[[f32; 2]]>,
     pub base_gain: f32,
     pub pcm: Handle<PcmAudio>,
+    /// Playback speed (pitch scale; 1 = as recorded): a vehicle engine's
+    /// loop follows its speed (BO2's `setloopstate`).
+    pub speed: f32,
 
     pub live_pan: Option<crate::pcm::LivePan>,
 }
@@ -223,7 +226,7 @@ pub(crate) fn start_sound_bank_compose(
     if attempted.0 {
         return;
     }
-    if silent.is_some() {
+    if silent.is_some() && !crate::AudioSilent::composes() {
         attempted.0 = true;
         return;
     }
@@ -631,6 +634,7 @@ fn start_map_ambient_prepared(
                 knots,
                 base_gain,
                 pcm: handle,
+                speed: 1.0,
                 live_pan: None,
             },
             Transform::from_translation(Vec3::from_array(origin_inches)),
@@ -743,13 +747,18 @@ pub fn update_map_emitter_gain(
                     epoch.0,
                 );
             } else {
-                if let Ok((_, emitter, _)) = emitters.get(entity)
-                    && let Some(pan) = emitter.live_pan.as_ref()
-                {
-                    pan.set(pan_l, pan_r);
+                let mut speed = 1.0;
+                if let Ok((_, emitter, _)) = emitters.get(entity) {
+                    speed = emitter.speed;
+                    if let Some(pan) = emitter.live_pan.as_ref() {
+                        pan.set(pan_l, pan_r);
+                    }
                 }
                 if let Ok(mut sink) = sinks.get_mut(entity) {
                     sink.set_volume(Volume::Linear(gain * settings.master_volume));
+                    if (sink.speed() - speed).abs() > 0.001 {
+                        sink.set_speed(speed);
+                    }
                     if sink.is_paused() {
                         sink.play();
                     }

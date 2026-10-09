@@ -26,6 +26,7 @@ mod autoplay;
 mod bots;
 mod brushes;
 mod clientfields;
+mod engine_sounds;
 mod fields;
 mod globallogic;
 mod hud;
@@ -131,6 +132,12 @@ pub struct T6VehicleDrive {
     pub camera_fov: f32,
     /// How far he may look up and down from its gun (first person).
     pub turret_pitch: [f32; 2],
+    /// `thirdPersonDriver`: the driver's seat views from outside.
+    pub third_person_driver: i32,
+    /// The commands of `moveUpButtonName`, `moveDownButtonName`,
+    /// `switchSeatButtonName`, `attackButtonName`, `attackSecondaryButtonName`
+    /// in BO2's default controller binds ("" for none).
+    pub buttons: [&'static str; 5],
 }
 
 /// An AI path node and its links (node, distance, negotiation).
@@ -235,6 +242,11 @@ pub(crate) struct Player {
     /// yet, when it was made.
     pub test_client: bool,
     pub pending_since: Option<i64>,
+    /// bo2mp: the shellshock he is under (its name), when it ends (level
+    /// ms) and the speed factor it put on `move_speed_scale_multiplier`
+    /// (the shock file's `bg_shock_movement`; 1 when none).
+    pub shock: Option<(String, i32)>,
+    pub shock_factor: f32,
 }
 
 impl Player {
@@ -256,6 +268,8 @@ impl Player {
             camera_on: false,
             test_client: false,
             pending_since: None,
+            shock: None,
+            shock_factor: 1.0,
         }
     }
 }
@@ -294,6 +308,9 @@ pub(crate) struct Zm {
     pub clips: std::collections::HashMap<String, Arc<xmodel_runtime::AnimClip>>,
     pub strings: std::collections::HashMap<String, String>,
     pub sound_aliases: BTreeSet<String>,
+    /// bo2mp: the shellshocks the scripts started (and precached), in order (the index
+    /// the player state carries is the position + 1).
+    pub shock_names: Vec<String>,
     /// bo2mp: a multiplayer map (game type in `maps/mp/gametypes/`).
     pub mp: bool,
     /// bo2mp: a ranked match (BO2's `level.rankedmatch`: XP counts, the
@@ -921,6 +938,7 @@ fn advance_inner(world: &mut World) {
     world.resource_mut::<Zm>().now_ms = now;
     players::sync(world);
     players::weapon_events(world);
+    players::shock_tick(world);
     // bo2mp: each player's third-person animations, as BO2's script picks.
     if world.resource::<Zm>().mp {
         playeranim::advance(world);

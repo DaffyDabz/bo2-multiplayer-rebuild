@@ -27,6 +27,12 @@ pub struct AdditiveUi {
     /// added as it is (BO2's ONE/ONE); 0 for the straight-alpha overlay target.
     #[uniform(4)]
     pub encoded: f32,
+    /// bo2mp vehicle screens: 1 for a picture packed as (AddMap colour,
+    /// colour map alpha): BO2's `sw4_2d_color_add` pixel shader, `rgb =
+    /// (ColorMap.a * colour.rgb + AddMap.rgb) * colour.a` (the VTOL Warship's
+    /// reticles).
+    #[uniform(5)]
+    pub color_add: f32,
 }
 
 impl UiMaterial for AdditiveUi {

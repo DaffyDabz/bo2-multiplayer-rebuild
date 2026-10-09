@@ -53,5 +53,9 @@ pub mod buttons {
 
     pub const OFFHAND_HOLD_CANCEL: u32 = 0x200000;
 
+    /// The vehicle seat button (`+weapnext_inventory`, wheel up): the
+    /// gunner's FLIR toggle polls it through `changeseatbuttonpressed`.
+    pub const CHANGE_SEAT: u32 = 0x400000;
+
     pub const SPRINT_INTERFERING: u32 = 0xcc35;
 }

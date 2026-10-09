@@ -1020,6 +1020,8 @@ pub fn sample_client_input(
         }
     }
     let cycles = std::mem::take(&mut actions.client.weapon_cycles);
+    // bo2mp: wheel up (`+weapnext_inventory`) is also BO2's change seat button.
+    let change_seat = cycles.iter().any(|next| *next);
     let in_killcam = view.is_some_and(|v| v.in_killcam());
     if let Some(ps) = ps {
         for next in cycles {
@@ -1078,6 +1080,9 @@ pub fn sample_client_input(
         cmd.buttons |= playerstate_iw4::buttons::REMOTE_CONTROL;
     }
 
+    if change_seat {
+        cmd.buttons |= playerstate_iw4::buttons::CHANGE_SEAT;
+    }
     cmd.weapon = select.index as u16;
     cmd.weapon_mapped = select.mapped_index as u16;
     if let Some(loadout) = presented

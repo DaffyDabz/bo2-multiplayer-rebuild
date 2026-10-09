@@ -163,6 +163,11 @@ impl AimAssistRanges {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct WeaponCombatFacts {
     pub aim_assist: AimAssistRanges,
+    /// bo2zm: Black Ops II footstep rhythm scales while sprinting, sprinting
+    /// crouched and diving (1.0: unchanged).
+    pub sprint_cycle_scale: f32,
+    pub ducked_sprint_cycle_scale: f32,
+    pub dtp_cycle_scale: f32,
     pub fire_time_ms: i32,
     pub fire_delay_ms: i32,
     pub raise_time_ms: i32,
@@ -310,6 +315,9 @@ impl WeaponCombatFacts {
             raise_time_ms: 0,
             drop_time_ms: 0,
             alternate_weapon: 0,
+            sprint_cycle_scale: 1.0,
+            ducked_sprint_cycle_scale: 1.0,
+            dtp_cycle_scale: 1.0,
             alternate_raise_time_ms: 0,
             alternate_drop_time_ms: 0,
             reload_time_ms: 0,
@@ -421,6 +429,9 @@ impl WeaponCombatFacts {
             raise_time_ms: input.raise_time_ms,
             drop_time_ms: input.drop_time_ms,
             alternate_weapon: input.alternate_weapon,
+            sprint_cycle_scale: 1.0,
+            ducked_sprint_cycle_scale: 1.0,
+            dtp_cycle_scale: 1.0,
             alternate_raise_time_ms: input.alternate_raise_time_ms,
             alternate_drop_time_ms: input.alternate_drop_time_ms,
             reload_time_ms: input.reload_time_ms,

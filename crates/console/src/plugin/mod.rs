@@ -532,15 +532,24 @@ fn publish_client_action_input(
             _ => crate::binds::display_button(button).to_uppercase(),
         };
         if let Some(command) = binds.binding_name(button) {
-            hud_input
-                .binding_keys
-                .entry(command.to_owned())
-                .or_insert_with(|| label.clone());
-            hud_input
-                .binding_keys_all
-                .entry(command.to_owned())
-                .or_default()
-                .push(label.clone());
+            // BO2's HUD asks for the next-weapon key by its own name
+            // (`[{+weapnext_inventory}]`, the VTOL's FLIR prompt).
+            let names: &[&str] = if command == "weapnext" {
+                &["weapnext", "+weapnext_inventory"]
+            } else {
+                &[command]
+            };
+            for command in names {
+                hud_input
+                    .binding_keys
+                    .entry((*command).to_owned())
+                    .or_insert_with(|| label.clone());
+                hud_input
+                    .binding_keys_all
+                    .entry((*command).to_owned())
+                    .or_default()
+                    .push(label.clone());
+            }
             if matches!(command, "+activate" | "+usereload") && hud_input.use_key.is_none() {
                 hud_input.use_key = Some(label.clone());
             }

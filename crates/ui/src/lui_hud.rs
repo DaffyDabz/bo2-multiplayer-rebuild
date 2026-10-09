@@ -426,6 +426,10 @@ fn engine_calls(hud: &mut LuiHud, io: &mut LuiIo<'_, '_>, local: Option<&LocalPr
                 // BO2's config files (`exec default_private.cfg`) and dvar
                 // sets, as ExecNow runs them.
                 if hks_t6::host::run_command(&hud.host.values, &text) {
+                    // (bo2mp: its stats commands on his stats.)
+                    if let Some(mp) = hud.mp.as_ref() {
+                        hks_t6::mp::apply_stat_commands(mp, &hud.host.values);
+                    }
                     continue;
                 }
                 // BO2's commands as ours; the ones with nothing here to do
@@ -998,11 +1002,12 @@ fn lui_hud(
     mut nodes: Query<(Entity, &mut LuiNode, &mut Node, &mut ZIndex)>,
     mut image_nodes: Query<&mut ImageNode>,
     (children, computed): (Query<&Children>, Query<(&ComputedNode, &UiGlobalTransform, &InheritedVisibility)>),
-    (mut pictures, mut logged, mut additive, mut add_names): (
+    (mut pictures, mut logged, mut additive, mut add_names, mut color_add_names): (
         Local<HashMap<String, Handle<Image>>>,
         Local<usize>,
         ResMut<Assets<crate::lui_additive::AdditiveUi>>,
         Local<Option<std::collections::HashSet<String>>>,
+        Local<std::collections::HashSet<String>>,
     ),
 ) {
     if !lui_enabled() {
@@ -1017,6 +1022,12 @@ fn lui_hud(
                 .filter_map(|(k, _)| k.strip_prefix("additive:").map(str::to_owned))
                 .collect(),
         );
+        // bo2mp vehicle screens: the ones BO2 draws with sw4_2d_color_add.
+        *color_add_names = icons
+            .iter()
+            .flat_map(|i| i.0.iter())
+            .filter_map(|(k, _)| k.strip_prefix("coloradd:").map(str::to_owned))
+            .collect();
     }
     // bo2mp: the front end has no game to read; its menus run alone.
     let front = io.front.as_deref().cloned();
@@ -2527,7 +2538,7 @@ fn lui_hud(
                     .spawn((
                         LuiNode { id: d.id, shows, alpha: color.alpha() },
                         node,
-                        MaterialNode(additive.add(crate::lui_additive::AdditiveUi { tint, picture: pic, uv, encoded: if enc_ui { 1.0 } else { 0.0 } })),
+                        MaterialNode(additive.add(crate::lui_additive::AdditiveUi { tint, picture: pic, uv, encoded: if enc_ui { 1.0 } else { 0.0 }, color_add: if color_add_names.contains(mat.as_str()) { 1.0 } else { 0.0 } })),
                         z,
                     ))
                     .id();
@@ -3129,6 +3140,15 @@ fn behind_picture(
         return picture(cache, icons, images, name).map(|h| (h, 0.0, 0.0));
     };
     raw_texels(&mut out);
+    // Only its top level: the blur and the clear border are made on that, and
+    // a mip chain left on a grown picture no longer matches its size (wgpu
+    // panicked on the Barracks' Prestige card behind the ConfirmPrestige
+    // popup: 61680 bytes wanted, 49344 given).
+    let top = out.width() as usize * out.height() as usize * 4;
+    if let Some(d) = out.data.as_mut() {
+        d.truncate(top);
+    }
+    out.texture_descriptor.mip_level_count = 1;
     let shares = if border > 0 && pad_clear(&mut out, border) { shares } else { (0.0, 0.0) };
     out.sampler = bevy::image::ImageSampler::Descriptor(bevy::image::ImageSamplerDescriptor {
         address_mode_u: bevy::image::ImageAddressMode::ClampToEdge,

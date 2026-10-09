@@ -236,10 +236,49 @@ fn grade_slot() -> &'static RwLock<(u64, Option<Arc<T6Grade>>)> {
 
 /// Installed once per Black Ops II map load (`None`: the map has no vision).
 pub fn install_t6_grade(grade: Option<T6Grade>) {
+    let grade = grade.map(Arc::new);
+    if let Ok(mut n) = naked_slot().write() {
+        *n = (grade.clone(), None);
+    }
+    put_grade(grade);
+}
+
+fn put_grade(grade: Option<Arc<T6Grade>>) {
     if let Ok(mut s) = grade_slot().write() {
         s.0 += 1;
-        s.1 = grade.map(Arc::new);
+        s.1 = grade;
     }
+}
+
+/// bo2mp vehicle screens: the naked vision's grade (the map's own, or a
+/// script's `visionsetnaked`) and the server's vision for the local player
+/// over it (`setvisionsetforplayer` while `useservervisionset` is on).
+type NakedSlot = RwLock<(Option<Arc<T6Grade>>, Option<String>)>;
+fn naked_slot() -> &'static NakedSlot {
+    static SLOT: std::sync::OnceLock<NakedSlot> = std::sync::OnceLock::new();
+    SLOT.get_or_init(Default::default)
+}
+
+fn named_grade(name: &str) -> Option<Arc<T6Grade>> {
+    let (vision, base) = vision_registry()
+        .read()
+        .ok()
+        .and_then(|r| r.0.get(&name.to_ascii_lowercase()).map(|v| (*v, r.1.clone())))?;
+    Some(Arc::new(T6Grade { lut: t6_grade_lut(&vision, base.as_deref()), vision }))
+}
+
+/// bo2mp vehicle screens: the local player's server vision ("" back to the
+/// naked one). False when no zone holds the name (the naked one stays).
+pub fn set_t6_player_vision(name: &str) -> bool {
+    let name = name.trim();
+    let over = if name.is_empty() { None } else { named_grade(name) };
+    let found = name.is_empty() || over.is_some();
+    let naked = naked_slot().write().ok().map(|mut n| {
+        n.1 = over.is_some().then(|| name.to_ascii_lowercase());
+        n.0.clone()
+    });
+    put_grade(over.or(naked.flatten()));
+    found
 }
 
 /// bo2mp: every named vision the zones hold (`vision/<name>.vision`, lower
@@ -273,14 +312,17 @@ pub fn set_t6_vision_base(base: Option<Vec<u8>>) {
 /// `visionsetnaked <name>`: install that vision's grade. False when no
 /// zone holds the name (the grade stays).
 pub fn set_t6_vision(name: &str) -> bool {
-    let Some((vision, base)) = vision_registry()
-        .read()
-        .ok()
-        .and_then(|r| r.0.get(&name.to_ascii_lowercase()).map(|v| (*v, r.1.clone())))
-    else {
+    let Some(grade) = named_grade(name) else {
         return false;
     };
-    install_t6_grade(Some(T6Grade { lut: t6_grade_lut(&vision, base.as_deref()), vision }));
+    // (A server vision for the local player stays over it until cleared.)
+    let over = naked_slot().write().ok().is_some_and(|mut n| {
+        n.0 = Some(grade.clone());
+        n.1.is_some()
+    });
+    if !over {
+        put_grade(Some(grade));
+    }
     true
 }
 

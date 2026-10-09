@@ -19,6 +19,21 @@ use super::{notify_all, streaks};
 use crate::world::ClientId;
 use playerstate_iw4::buttons;
 
+/// The usercmd buttons a command holds ("" holds none).
+fn command_bits(command: &str) -> u32 {
+    match command {
+        "+gostand" => buttons::JUMP,
+        "+stance" => buttons::CROUCH | buttons::PRONE,
+        "+frag" => buttons::FRAG,
+        "+smoke" => buttons::SMOKE,
+        "+attack" => buttons::ATTACK,
+        "+speed_throw" => buttons::ADS,
+        "+melee" => buttons::MELEE_CHARGE,
+        "+breath_sprint" => buttons::BREATH,
+        _ => 0,
+    }
+}
+
 /// How a vehicle is driven.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Drive {
@@ -162,7 +177,7 @@ pub(super) fn bind(vm: &mut Vm<World>) {
         );
         // His view keeps to its limits: the gun's in first person, the
         // camera's in third.
-        let pitch = if info.camera_mode == 0 {
+        let pitch = if info.third_person_driver == 0 {
             info.turret_pitch
         } else {
             info.camera_pitch
@@ -189,7 +204,11 @@ pub(super) fn bind(vm: &mut Vm<World>) {
         if drive != Drive::Gunner {
             super::super::set_player_view(world, id, [0.0, yaw, 0.0]);
         }
-        super::super::set_client_dvar(world, id.0, "bo2mp_vehicle", &format!("{kind} {seat}"));
+        // "<type> <seat> <up> <down> <switch seat> <attack> <attack 2>": the
+        // last five are the commands his keys give the vehicle's buttons
+        // ("-" none), the HUD's key prompts (`[{+vehiclemoveup}]`).
+        let buttons = info.buttons.map(|c| if c.is_empty() { "-" } else { c }).join(" ");
+        super::super::set_client_dvar(world, id.0, "bo2mp_vehicle", &format!("{kind} {seat} {buttons}"));
         diag::info!(
             Sim,
             "bo2mp vehicle: player {} takes {kind} (ent {v}, seat {seat}, {drive:?}, {model} \
@@ -290,7 +309,7 @@ pub(super) fn advance(world: &mut World) {
                 .map(|p| (p.id.to_wire(), p.number));
             if let Some((m, number)) = model {
                 let i = ride.info;
-                let (mode, at, [up, down]) = if i.camera_mode == 0 {
+                let (mode, at, [up, down]) = if i.third_person_driver == 0 {
                     (1, ride.eye, i.turret_pitch)
                 } else {
                     (0, [i.camera_range, i.camera_height, 0.0], i.camera_pitch)
@@ -390,11 +409,14 @@ pub(super) fn advance(world: &mut World) {
                 new_ang = [0.0, view[1], 0.0];
             }
             Drive::Air => {
+                // Up and down are the vehicle's own buttons (the Dragonfire's
+                // moveUpButtonName / moveDownButtonName), on the keys he has
+                // for what BO2's controller binds put on them.
                 let mut climb = 0.0;
-                if held & buttons::JUMP != 0 {
+                if held & command_bits(info.buttons[0]) != 0 {
                     climb += 1.0;
                 }
-                if held & (buttons::CROUCH | buttons::PRONE) != 0 {
+                if held & command_bits(info.buttons[1]) != 0 {
                     climb -= 1.0;
                 }
                 for i in 0..2 {

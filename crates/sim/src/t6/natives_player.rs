@@ -8,6 +8,7 @@ use super::{
     weapon_text,
 };
 use crate::script_player;
+use crate::world::ClientId;
 
 type R = Result<Value, String>;
 
@@ -63,6 +64,41 @@ fn controls(
         set(&mut f.client_meta_mut(id).controls);
     }
     Ok(Value::Undefined)
+}
+
+/// A shellshock ends (`stopshellshock` or its time ran out): the timer, the
+/// SHELLSHOCKED flag and the speed factor it put on the scale go.
+pub(super) fn end_shock(world: &mut World, n: u32, why: &str) {
+    let id = ClientId(n);
+    let taken = world
+        .resource_mut::<Zm>()
+        .players
+        .get_mut(&n)
+        .and_then(|p| {
+            let name = p.shock.take()?.0;
+            let factor = std::mem::replace(&mut p.shock_factor, 1.0);
+            Some((name, factor))
+        });
+    let Some((name, factor)) = taken else {
+        // Nothing this script started: still clear the timer.
+        if let Some(ps) = frame(world).player_mut(id) {
+            ps.shellshock_duration = 0;
+            ps.pm_flags &= !playerstate_iw4::pm_flags::SHELLSHOCKED;
+        }
+        return;
+    };
+    let level = crate::level_time_ms(tick(world));
+    let mut f = frame(world);
+    if let Some(ps) = f.player_mut(id) {
+        ps.shellshock_duration = 0;
+        ps.pm_flags &= !playerstate_iw4::pm_flags::SHELLSHOCKED;
+        ps.move_speed_scale_multiplier /= factor;
+    }
+    f.client_meta_mut(id).shellshock = None;
+    diag::info!(
+        Sim,
+        "bo2mp shellshock end: client {n} '{name}' at {level} ms ({why}), speed x{factor} off"
+    );
 }
 
 pub(super) fn bind(vm: &mut Vm<World>) {
@@ -299,6 +335,138 @@ pub(super) fn bind(vm: &mut Vm<World>) {
         s,
         |c| c.switch_disabled = false
     ));
+    // bo2mp: BO2's `allow*` (false drops the request in constrain_cmd).
+    m!("allowprone", |vm, world, s, a| {
+        let on = flag(a, 0, true);
+        controls(vm, world, s, |c| c.prone_disabled = !on)
+    });
+    m!("allowcrouch", |vm, world, s, a| {
+        let on = flag(a, 0, true);
+        controls(vm, world, s, |c| c.crouch_disabled = !on)
+    });
+    m!("allowstand", |vm, world, s, a| {
+        let on = flag(a, 0, true);
+        controls(vm, world, s, |c| c.stand_disabled = !on)
+    });
+    m!("allowsprint", |vm, world, s, a| {
+        let on = flag(a, 0, true);
+        controls(vm, world, s, |c| c.sprint_disabled = !on)
+    });
+    m!("allowmelee", |vm, world, s, a| {
+        let on = flag(a, 0, true);
+        controls(vm, world, s, |c| c.melee_disabled = !on)
+    });
+    m!("allowads", |vm, world, s, a| {
+        let on = flag(a, 0, true);
+        controls(vm, world, s, |c| c.ads_disabled = !on)
+    });
+    // bo2mp: `setmovespeedscale(f)` is the player's own scale; a shellshock's
+    // `bg_shock_movement` rides on top while it lasts (`getmovespeedscale`
+    // gives his own back). The feel window reads
+    // `PlayerState::move_speed_scale_multiplier` (the product).
+    m!("setmovespeedscale", |vm, world, s, a| {
+        let id = client(vm, world, s)?;
+        let scale = num(a, 0)?;
+        let factor = world
+            .resource::<Zm>()
+            .players
+            .get(&id.0)
+            .map_or(1.0, |p| p.shock_factor);
+        if let Some(ps) = frame(world).player_mut(id) {
+            ps.move_speed_scale_multiplier = scale * factor;
+        }
+        diag::info!(
+            Sim,
+            "bo2mp setmovespeedscale: client {} scale {scale} (shock x{factor} = {})",
+            id.0,
+            scale * factor
+        );
+        Ok(Value::Undefined)
+    });
+    m!("getmovespeedscale", |vm, world, s, _| {
+        let id = client(vm, world, s)?;
+        let factor = world
+            .resource::<Zm>()
+            .players
+            .get(&id.0)
+            .map_or(1.0, |p| p.shock_factor);
+        Ok(Value::Float(
+            frame(world)
+                .player(id)
+                .map_or(1.0, |ps| ps.move_speed_scale_multiplier / factor),
+        ))
+    });
+    // bo2mp: BO2's shellshock (shock/<name>.shock): the timer and duration
+    // on the player state, the file's screen / look / sound / movement
+    // values to his client. Our flashed overlay, look limits and tinnitus
+    // run from those; the movement scale is the file's, not a constant.
+    m!("shellshock", |vm, world, s, a| {
+        let id = client(vm, world, s)?;
+        let name = text(vm, a, 0).to_ascii_lowercase();
+        let seconds = num(a, 1)?;
+        if seconds < 0.0 {
+            return Err(format!("shellshock duration {seconds} is negative"));
+        }
+        let Some(mut shock) = frame(world).shock(&name).cloned() else {
+            return Err(format!("no shock file for shellshock '{name}'"));
+        };
+        let now = crate::level_time_ms(tick(world));
+        let index = {
+            let mut zm = world.resource_mut::<Zm>();
+            let at = match zm.shock_names.iter().position(|n| *n == name) {
+                Some(at) => at,
+                None => {
+                    zm.shock_names.push(name.clone());
+                    zm.shock_names.len() - 1
+                }
+            };
+            at as i32 + 1
+        };
+        let new_factor = if shock.movement_scale > 0.0 {
+            shock.movement_scale
+        } else {
+            1.0
+        };
+        let old_factor = world
+            .resource::<Zm>()
+            .players
+            .get(&id.0)
+            .map_or(1.0, |p| p.shock_factor);
+        let duration = (seconds * 1000.0) as i32;
+        // BO2's file gives a scale, not a switch: IW4's fixed 0.4 stays off.
+        shock.movement = false;
+        let (look, sound, kick) = (
+            shock.look.affect,
+            shock.sound.loop_alias.clone(),
+            shock.view_kick_radius,
+        );
+        let flashed = shock.screen_type == hud_iw4::SCREEN_BLEND_FLASHED;
+        let mut f = frame(world);
+        let Some(ps) = f.player_mut(id) else {
+            return Ok(Value::Undefined);
+        };
+        ps.shellshock_index = index;
+        ps.shellshock_time = now;
+        ps.shellshock_duration = duration;
+        ps.pm_flags |= playerstate_iw4::pm_flags::SHELLSHOCKED;
+        ps.move_speed_scale_multiplier = ps.move_speed_scale_multiplier / old_factor * new_factor;
+        f.client_meta_mut(id).shellshock = Some(shock);
+        if let Some(p) = world.resource_mut::<Zm>().players.get_mut(&id.0) {
+            p.shock = Some((name.clone(), now.wrapping_add(duration)));
+            p.shock_factor = new_factor;
+        }
+        diag::info!(
+            Sim,
+            "bo2mp shellshock: client {} '{name}' {seconds}s from {now} ms (index {index}, flash {flashed}, look {look}, loop '{sound}', speed x{new_factor}, view kick {kick})",
+            id.0
+        );
+        Ok(Value::Undefined)
+    });
+    m!("stopshellshock", |vm, world, s, _| {
+        let id = client(vm, world, s)?;
+        end_shock(world, id.0, "stopshellshock");
+        Ok(Value::Undefined)
+    });
     m!("allowjump", |vm, world, s, a| {
         let on = flag(a, 0, true);
         controls(vm, world, s, |c| c.jump_disabled = !on)
@@ -547,17 +715,8 @@ pub(super) fn bind(vm: &mut Vm<World>) {
         "closeingamemenu",
         "setblur",
         "startfadingblur",
-        "shellshock",
-        "stopshellshock",
-        "setmovespeedscale",
         "enableinvulnerability",
         "disableinvulnerability",
-        "allowprone",
-        "allowcrouch",
-        "allowstand",
-        "allowsprint",
-        "allowmelee",
-        "allowads",
         "allowlean",
         "allowspectateteam",
         "allowpitchangle",
@@ -757,8 +916,6 @@ pub(super) fn bind(vm: &mut Vm<World>) {
         "setclientminiscoreboardhide",
         "setblur",
         "setburn",
-        "shellshock",
-        "stopshellshock",
         "setelectrified",
         "setlowready",
     ] {

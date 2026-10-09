@@ -17,6 +17,8 @@ pub struct WalkMoveContext {
     pub jump: JumpLaunchContext,
 
     pub air: AirMoveContext,
+
+    pub feel: crate::Bo2Feel, // bo2zm
 }
 
 #[allow(clippy::assign_op_pattern)]
@@ -29,7 +31,12 @@ pub fn walk_move<C: CollisionBackend>(
     collision: &C,
 ) {
     if (ps.pm_flags & 0x2000) != 0 {
-        prone_velocity_scale(ps);
+        prone_velocity_scale(ps, context.feel);
+    }
+    // bo2zm: Black Ops II slows sideways input while sprinting.
+    if context.feel.on && (ps.pm_flags & 0x4000) != 0 {
+        cmd.rightmove =
+            ((cmd.rightmove as f32) * context.feel.sprint_strafe_speed_scale) as i32 as i8;
     }
 
     let gate = JumpCheckContext {
@@ -42,7 +49,7 @@ pub fn walk_move<C: CollisionBackend>(
         return;
     }
 
-    friction(ps, pml);
+    friction(ps, pml, context.feel.on);
 
     let command_scale =
         cmd_scale_walk(ps, cmd, context.cmd_scale) * crate::damage_scale_walk(ps.damage_timer);
@@ -88,11 +95,18 @@ pub fn walk_move<C: CollisionBackend>(
     }
 }
 
-fn prone_velocity_scale(ps: &mut PlayerState) {
+fn prone_velocity_scale(ps: &mut PlayerState, feel: crate::Bo2Feel) {
+    // bo2zm: Black Ops II only slows a landing to 0.5 when you came down at
+    // least 18 units above the take-off; a flat landing keeps 0.65.
+    let raise = if feel.on {
+        crate::feel::JUMP_LAND_RAISE
+    } else {
+        0.0
+    };
     let mut scale = 1.0_f32;
     if ps.pm_time < 0x709 {
         if ps.pm_time == 0 {
-            if ps.jump_origin_z <= ps.origin[2] {
+            if ps.jump_origin_z + raise <= ps.origin[2] {
                 ps.pm_time = 0x4b0;
                 scale = 0.5;
             } else {
@@ -106,7 +120,8 @@ fn prone_velocity_scale(ps: &mut PlayerState) {
         scale = 0.65;
     }
 
-    if (ps.pm_flags & 0x400000) == 0 {
+    let slowdown = !feel.on || feel.jump_slowdown;
+    if (ps.pm_flags & 0x400000) == 0 && slowdown {
         ps.velocity[0] *= scale;
         ps.velocity[1] *= scale;
         ps.velocity[2] *= scale;
@@ -157,4 +172,50 @@ fn clip_to_ground_plane(vector: &mut [f32; 3], normal: &[u32]) {
         f32::from_bits(normal[2]),
     ];
     crate::project_velocity(vector, &normal);
+}
+
+#[cfg(test)]
+mod tests {
+    use playerstate_iw4::PlayerState;
+
+    use super::prone_velocity_scale;
+    use crate::Bo2Feel;
+
+    const BO2: Bo2Feel = Bo2Feel {
+        on: true,
+        sprint_strafe_speed_scale: 0.667,
+        jump_slowdown: true,
+        ..Bo2Feel::IW4
+    };
+
+    fn landed(raise: f32, feel: Bo2Feel) -> f32 {
+        let mut ps = PlayerState::ZERO;
+        ps.pm_flags = 0x2000;
+        ps.jump_origin_z = 100.0;
+        ps.origin = [0.0, 0.0, 100.0 + raise];
+        ps.velocity = [100.0, 0.0, 0.0];
+        prone_velocity_scale(&mut ps, feel);
+        ps.velocity[0]
+    }
+
+    #[test]
+    fn flat_landing_keeps_065_in_bo2() {
+        assert!((landed(0.0, BO2) - 65.0).abs() < 1e-3);
+        assert!((landed(0.0, Bo2Feel::IW4) - 50.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn landing_18_up_slows_to_half_in_bo2() {
+        assert!((landed(18.0, BO2) - 50.0).abs() < 1e-3);
+        assert!((landed(17.0, BO2) - 65.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn slowdown_off_keeps_speed() {
+        let off = Bo2Feel {
+            jump_slowdown: false,
+            ..BO2
+        };
+        assert!((landed(0.0, off) - 100.0).abs() < 1e-3);
+    }
 }

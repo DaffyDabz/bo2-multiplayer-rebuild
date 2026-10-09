@@ -162,6 +162,21 @@ pub struct ShockParams {
     pub sound: ShellshockSoundParms,
 
     pub movement: bool,
+
+    /// BO2: `bg_shock_movement` is a speed scale while shocked (flashbang
+    /// 0.8, concussion 0.32), not a switch. 0 when the file has none.
+    pub movement_scale: f32,
+
+    /// BO2: `bg_shock_viewKickPeriod` / `Radius` / `FadeTime`, in seconds
+    /// (the shock's view shake; read by the view-kick code). 0 when absent.
+    pub view_kick_period: f32,
+    pub view_kick_radius: f32,
+    pub view_kick_fade: f32,
+
+    /// BO2: `bg_shock_visionset_name` and its in / out times in seconds.
+    pub visionset: String,
+    pub visionset_in: f32,
+    pub visionset_out: f32,
 }
 
 impl ShockParams {
@@ -189,6 +204,12 @@ impl ShockParams {
         };
         let ms = |key: &str| number(key).map(|seconds| libm::roundf(seconds * 1000.0) as i32);
         let flag = |key: &str| number(key).map(|value| value != 0.0);
+        let optional = |key: &str| -> f32 {
+            text(key)
+                .ok()
+                .and_then(|value| value.parse::<f32>().ok())
+                .unwrap_or(0.0)
+        };
         let screen_type = match text("screenType")?.to_ascii_lowercase().as_str() {
             "blurred" => SCREEN_BLEND_BLURRED,
             "flashed" => SCREEN_BLEND_FLASHED,
@@ -217,6 +238,83 @@ impl ShockParams {
                 abort_alias: text("soundEndAbort")?,
             },
             movement: flag("movement")?,
+            movement_scale: optional("movement"),
+            view_kick_period: optional("viewKickPeriod"),
+            view_kick_radius: optional("viewKickRadius"),
+            view_kick_fade: optional("viewKickFadeTime"),
+            visionset: text("visionset_name").unwrap_or_default(),
+            visionset_in: optional("visionset_inTime"),
+            visionset_out: optional("visionset_outTime"),
         })
+    }
+}
+
+#[cfg(test)]
+mod bo2_shock_tests {
+    use super::ShockParams;
+
+    // BO2's common_mp shock/flashbang.shock and shock/concussion_grenade_mp.shock
+    // (the values the lines that matter are copied from).
+    const FLASHBANG: &str = r#"
+bg_shock_screenType "flashed"
+bg_shock_screenFlashWhiteFadeTime "3.5"
+bg_shock_screenFlashShotFadeTime "1.0"
+bg_shock_viewKickPeriod ".75"
+bg_shock_viewKickRadius ".05"
+bg_shock_viewKickFadeTime "3"
+bg_shock_sound "1"
+bg_shock_soundLoop "chr_flashbang_tinnitus_loop"
+bg_shock_soundEnd ""
+bg_shock_soundEndAbort ""
+bg_shock_lookControl "0"
+bg_shock_lookControl_maxpitchspeed "90"
+bg_shock_lookControl_maxyawspeed "90"
+bg_shock_lookControl_mousesensitivityscale "0.5"
+bg_shock_lookControl_fadeTime "2"
+bg_shock_movement "0.8"
+bg_shock_visionset_name ""
+bg_shock_visionset_inTime "0"
+bg_shock_visionset_outTime "0"
+"#;
+
+    const CONCUSSION: &str = r#"
+bg_shock_screenType "flashed"
+bg_shock_screenFlashWhiteFadeTime "7.5"
+bg_shock_screenFlashShotFadeTime "15"
+bg_shock_viewKickPeriod ".75"
+bg_shock_viewKickRadius ".1"
+bg_shock_viewKickFadeTime "3"
+bg_shock_sound "1"
+bg_shock_soundLoop "chr_tinitus_loop"
+bg_shock_soundEnd ""
+bg_shock_soundEndAbort ""
+bg_shock_lookControl "1"
+bg_shock_lookControl_maxpitchspeed "22"
+bg_shock_lookControl_maxyawspeed "22"
+bg_shock_lookControl_mousesensitivityscale "0.1"
+bg_shock_lookControl_fadeTime "2"
+bg_shock_movement "0.32"
+bg_shock_visionset_name "concussion_grenade"
+bg_shock_visionset_inTime "0"
+bg_shock_visionset_outTime "3.5"
+"#;
+
+    #[test]
+    fn flashbang_movement_is_the_files_scale() {
+        let p = ShockParams::parse(FLASHBANG).unwrap();
+        assert_eq!(p.movement_scale, 0.8);
+        assert_eq!(p.white_fade_ms, 3500);
+        assert_eq!(p.view_kick_radius, 0.05);
+        assert_eq!(p.visionset, "");
+    }
+
+    #[test]
+    fn concussion_has_look_limits_scale_and_vision() {
+        let p = ShockParams::parse(CONCUSSION).unwrap();
+        assert_eq!(p.movement_scale, 0.32);
+        assert!(p.look.affect);
+        assert_eq!(p.look.max_yaw_speed, 22.0);
+        assert_eq!(p.visionset, "concussion_grenade");
+        assert_eq!(p.visionset_out, 3.5);
     }
 }

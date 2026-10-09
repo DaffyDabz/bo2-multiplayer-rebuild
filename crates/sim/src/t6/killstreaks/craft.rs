@@ -110,6 +110,8 @@ fn spawn_craft(
     let f = vm.intern("vehicletype");
     let k = vm.string(kind);
     vm.set_raw_field(obj, f, k);
+    // Its engine loops (BO2's client script `_helicopter_sounds.csc`).
+    super::super::engine_sounds::spawned(world, n, kind);
     if flies {
         // Its guns, from the vehicle's own data in his zones.
         let (weapon, gunners) = streaks(world)

@@ -3,8 +3,13 @@ use playerstate_iw4::PlayerState;
 use crate::Pml;
 
 #[allow(clippy::assign_op_pattern)]
-pub fn friction(ps: &mut PlayerState, pml: &Pml) {
-    let speed = velocity_speed(&ps.velocity);
+pub fn friction(ps: &mut PlayerState, pml: &Pml, bo2: bool) {
+    // bo2zm: Black Ops II measures the speed along the ground while walking.
+    let speed = if bo2 && pml.walking != 0 {
+        velocity_speed(&[ps.velocity[0], ps.velocity[1], 0.0])
+    } else {
+        velocity_speed(&ps.velocity)
+    };
     if stop_slow_velocity(&mut ps.velocity, speed) {
         return;
     }
@@ -19,7 +24,13 @@ pub fn friction(ps: &mut PlayerState, pml: &Pml) {
             }
 
             if (flags & 0x80) != 0 {
-                control *= 2.0;
+                // bo2zm: a hard landing slides in Black Ops II instead of
+                // stopping dead.
+                control *= if bo2 {
+                    crate::feel::HARD_LANDING_FRICTION_SCALE
+                } else {
+                    2.0
+                };
             } else if (flags & 0x2000) != 0 {
                 control *= walking_scale(ps);
             }

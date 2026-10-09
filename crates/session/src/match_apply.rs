@@ -186,11 +186,15 @@ pub fn apply_prepared_match(
 
     let world_report = std::mem::take(&mut prepared.report);
     log_world_report(&world_report);
-    let map_shocks: Vec<(String, String)> = prepared
+    let mut map_shocks: Vec<(String, String)> = prepared
         .scripts
         .shocks()
         .map(|(name, text)| (name.to_owned(), text.to_owned()))
         .collect();
+    // bo2mp: BO2's own shellshock files (flashbang, concussion_grenade...).
+    if let Some(t6) = prepared.scripts.t6.as_ref() {
+        map_shocks.extend(t6.shocks.iter().cloned());
+    }
 
     let plan = match preflight_match_install(
         prepared,
@@ -1012,6 +1016,8 @@ fn preflight_match_install(
                         camera_pitch: d.camera_pitch,
                         camera_fov: d.camera_fov,
                         turret_pitch: d.turret_pitch,
+                        third_person_driver: d.third_person_driver,
+                        buttons: d.buttons,
                     },
                 }
             })

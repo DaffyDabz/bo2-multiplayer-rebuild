@@ -483,6 +483,12 @@ pub(super) fn bind(vm: &mut Vm<World>) {
         if let Some(mut zm) = bot_mut(world, n) {
             zm.bots.get_mut(&n).unwrap().no_sprint = !on;
         }
+        // bo2mp: the same switch every player has (the server drops sprint).
+        let id = crate::world::ClientId(n);
+        let mut f = super::frame(world);
+        if f.client_meta(id).is_some() {
+            f.client_meta_mut(id).controls.sprint_disabled = !on;
+        }
         Ok(Value::Undefined)
     });
     // A grenade at a point: look there and throw.

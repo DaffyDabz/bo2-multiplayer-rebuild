@@ -209,6 +209,8 @@ fn encode_destructible_loop_sounds(out: &mut WireWriter, rows: &[DestructibleLoo
         for v in row.origin {
             out.put_f32(v);
         }
+        out.put_u8(row.volume);
+        out.put_u8(row.pitch);
     }
 }
 
@@ -224,10 +226,14 @@ fn decode_destructible_loop_sounds(
         for v in &mut origin {
             *v = input.get_f32()?;
         }
+        let volume = input.get_u8()?;
+        let pitch = input.get_u8()?;
         rows.push(DestructibleLoopSound {
             owner,
             alias_index,
             origin,
+            volume,
+            pitch,
         });
     }
     Ok(rows)
@@ -1399,6 +1405,7 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
         linked: input.get_u8()? != 0,
         stunned: input.get_u8()? != 0,
         switch_to: input.get_u32()?,
+        ..sim::ScriptControls::default()
     };
     let killcam_hud = match input.get_u8()? {
         0 => None,
@@ -1629,6 +1636,13 @@ fn encode_shock(out: &mut WireWriter, shock: Option<&hud_iw4::ShockParams>) {
     put_text(out, &shock.sound.end_alias);
     put_text(out, &shock.sound.abort_alias);
     out.put_u8(u8::from(shock.movement));
+    out.put_f32(shock.movement_scale);
+    out.put_f32(shock.view_kick_period);
+    out.put_f32(shock.view_kick_radius);
+    out.put_f32(shock.view_kick_fade);
+    put_text(out, &shock.visionset);
+    out.put_f32(shock.visionset_in);
+    out.put_f32(shock.visionset_out);
 }
 
 fn decode_shock(input: &mut WireReader<'_>) -> Result<Option<hud_iw4::ShockParams>, WireError> {
@@ -1653,6 +1667,13 @@ fn decode_shock(input: &mut WireReader<'_>) -> Result<Option<hud_iw4::ShockParam
             abort_alias: get_text(input)?,
         },
         movement: input.get_u8()? != 0,
+        movement_scale: input.get_f32()?,
+        view_kick_period: input.get_f32()?,
+        view_kick_radius: input.get_f32()?,
+        view_kick_fade: input.get_f32()?,
+        visionset: get_text(input)?,
+        visionset_in: input.get_f32()?,
+        visionset_out: input.get_f32()?,
     }))
 }
 fn encode_hud_bank(out: &mut WireWriter, bank: &[hud_iw4::HudElem]) {

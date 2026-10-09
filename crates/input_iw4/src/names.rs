@@ -105,6 +105,11 @@ pub fn command_id_lookup(name: &str) -> Option<u32> {
     if let Some(id) = command_id_from_name(folded) {
         return Some(id);
     }
+    // Black Ops II's own name for its wheel-up bind (players/
+    // bindings_mp.bdg: MWHEELUP "+weapnext_inventory"): the next weapon.
+    if folded == "+weapnext_inventory" {
+        return command_id_from_name("weapnext");
+    }
     if folded.starts_with('+') || folded.starts_with('-') {
         return None;
     }

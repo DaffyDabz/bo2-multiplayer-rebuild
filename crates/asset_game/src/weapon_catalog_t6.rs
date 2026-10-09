@@ -402,6 +402,17 @@ fn t6_body_facts(w: &asset_t6::WeaponRef) -> WeaponBodyFacts {
         ads_sway_horiz_scale: w.var_f32(v::fAdsSwayHorizScale),
         ads_sway_vert_scale: w.var_f32(v::fAdsSwayVertScale),
     };
+    if f.body_resolved {
+        let pair = |off: usize| [w.def_f32(off), w.def_f32(off + 4)];
+        f.bob = WeaponBobFacts {
+            sprint_cycle_scale: w.def_f32(d::fSprintCycleScale),
+            ducked_sprint_cycle_scale: w.def_f32(d::fDuckedSprintCycleScale),
+            dtp_cycle_scale: w.def_f32(d::fDtpCycleScale),
+            sprint_bob: pair(d::vSprintBob),
+            ducked_sprint_bob: pair(d::vDuckedSprintBob),
+            dtp_bob: pair(d::vDtpBob),
+        };
+    }
     f
 }
 

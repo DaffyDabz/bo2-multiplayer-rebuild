@@ -102,7 +102,7 @@ pub fn pmove<C: CollisionBackend, L: MantleXAnimLength, R: MantleRootDelta>(
     // bo2zm: Black Ops II's dive to prone starts from a sprint, so it is
     // decided before the sprint and stance updates see the prone press;
     // while it lasts, the dive owns sprint, stance and movement.
-    let dive_start = crate::dive::wants(ps, cmd, context.old_buttons);
+    let dive_start = context.walk.feel.dive && crate::dive::wants(ps, cmd, context.old_buttons);
     let diving = dive_start || crate::dive::active(ps);
 
     let _ads = update_ads_intent(ps, cmd, context.old_buttons, context.ads_intent);
@@ -119,11 +119,13 @@ pub fn pmove<C: CollisionBackend, L: MantleXAnimLength, R: MantleRootDelta>(
             .allsolid
             == 0;
     }
+    let sprint_before = (ps.pm_flags & pm_flags::SPRINTING, ps.sprint_delay);
     let sprint_change = if diving {
         crate::SprintResult::Unchanged
     } else {
         update_sprint(ps, cmd, context.old_buttons, sprint)
     };
+    crate::feel::jump_out_of_sprint(ps, cmd, context.walk.feel, sprint_before, sprint_change); // bo2zm
     let previous_stance = ps.pm_flags & 3;
     let dive_prone = !diving && crate::dive::holds_prone(ps, cmd, context.old_buttons);
     if !diving && !dive_prone {
@@ -181,7 +183,7 @@ pub fn pmove<C: CollisionBackend, L: MantleXAnimLength, R: MantleRootDelta>(
     if (ps.pm_flags & pm_flags::MANTLE) == 0 {
         // Mantle root motion owns the path through the ledge. Ground solid
         // correction during that path would push the player back off it.
-        complete_ground_trace(ps, &mut pml, bounds, collision);
+        complete_ground_trace(ps, &mut pml, bounds, collision, context.walk.feel);
         let mut mantle_tracer = CollisionMantleTrace { collision, bounds };
         let _ = (!diving).then(|| {
             mantle::check(
@@ -263,15 +265,18 @@ pub fn pmove<C: CollisionBackend, L: MantleXAnimLength, R: MantleRootDelta>(
         }
     }
 
-    complete_ground_trace(ps, &mut pml, bounds, collision);
+    complete_ground_trace(ps, &mut pml, bounds, collision, context.walk.feel);
     if diving {
         crate::dive::settle(ps, &pml, cmd, collision, bounds);
     }
 
     if (ps.pm_flags & pm_flags::LADDER) != 0 {
-        ladder_footsteps(ps, pml.msec, cmd.server_time);
+        ladder_footsteps(ps, pml.msec, cmd.server_time, context.walk.feel);
     } else {
         let old_bob = ps.bob_cycle as u8;
+        // bo2zm: a dive runs the rhythm without footsteps.
+        let dive_rhythm = context.walk.feel.on
+            && (ps.pm_flags & (crate::dive::PMF_DIVE | crate::dive::PMF_DIVE_SLIDE)) != 0;
         footsteps_bob_cycle(
             ps,
             pml.msec,
@@ -280,14 +285,17 @@ pub fn pmove<C: CollisionBackend, L: MantleXAnimLength, R: MantleRootDelta>(
             pml.almost_ground_plane != 0,
             cmd.server_time,
             context.walk.cmd_scale,
+            context.walk.feel,
         );
-        footstep_event(
-            ps,
-            old_bob,
-            ps.bob_cycle as u8,
-            pml.ground_trace[4],
-            should_make_footsteps(ps),
-        );
+        if !dive_rhythm {
+            footstep_event(
+                ps,
+                old_bob,
+                ps.bob_cycle as u8,
+                pml.ground_trace[4],
+                should_make_footsteps(ps),
+            );
+        }
     }
 
     end_tick_velocity(ps, &pml);

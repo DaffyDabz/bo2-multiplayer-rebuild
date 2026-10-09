@@ -267,9 +267,11 @@ pub(super) fn hud_icons(
     for name in &wanted {
         let name = name.as_str();
         let mut add = false;
+        let mut add_map = None;
         let found = captures.iter().find_map(|c| {
             let m = c.materials.iter().find(|m| m.name == name)?;
             add = super::t6_materials::is_additive(m);
+            add_map = super::t6_materials::add_map(m, c);
             // BO2MP_ICON_STATES=<substring>: print the matching pictures' draw states (debugging aid).
             if let Ok(sub) = std::env::var("BO2MP_ICON_STATES")
                 && name.contains(sub.as_str())
@@ -323,9 +325,29 @@ pub(super) fn hud_icons(
                 // bo2mp: the HUD adds these onto the scene (true additive
                 // blending), so keep the pictures as stored under
                 // "additive:<name>" next to the see-through copy.
-                if add && let Some(orig) = super::t6_materials::to_rgba8(&img) {
-                    icons.push((format!("additive:{name}"), std::sync::Arc::new(orig)));
-                }
+                // bo2mp vehicle screens: a picture with an AddMap (BO2's
+                // `sw4_2d_color_add` pixel shader: the colour map's alpha
+                // times the element's colour, plus the AddMap's colour, all
+                // times its alpha) is kept packed (AddMap colour, colour
+                // map alpha) under "additive:" and marked "coloradd:".
+                let packed = add_map
+                    .and_then(|i| super::t6_materials::decode(packs, i).ok())
+                    .and_then(|added| super::t6_materials::pack_color_add(&img, &added));
+                let img = match packed {
+                    Some((packed, flat)) => {
+                        icons.push((format!("coloradd:{name}"), std::sync::Arc::new(packed.clone())));
+                        if add {
+                            icons.push((format!("additive:{name}"), std::sync::Arc::new(packed)));
+                        }
+                        flat
+                    }
+                    None => {
+                        if add && let Some(orig) = super::t6_materials::to_rgba8(&img) {
+                            icons.push((format!("additive:{name}"), std::sync::Arc::new(orig)));
+                        }
+                        img
+                    }
+                };
                 // Additive pictures (menu brackets, glows) get their
                 // brightness as alpha: the 2D layer only alpha-blends.
                 let img = match add.then(|| super::t6_materials::additive_to_alpha(&img)).flatten() {
@@ -1425,6 +1447,28 @@ pub(crate) fn load_t6_combat(
             .join(", ")
     ));
 
+    // bo2mp vehicle screens: the match zones' named visions
+    // (`vision/<name>.vision`, later zones winning a name) for the scripts'
+    // `visionsetnaked` and `setvisionsetforplayer` (the VTOL Warship's
+    // `remote_mortar_enhanced`, _helicopter_gunner.gsc).
+    if is_mp_map(&map_stem) {
+        let visions: Vec<(String, asset_world::T6Vision)> = captures
+            .iter()
+            .flat_map(|c| c.raw_files.iter())
+            .filter_map(|(name, bytes)| {
+                let n = name.replace('\\', "/");
+                let n = n.strip_prefix("vision/")?.strip_suffix(".vision")?.to_owned();
+                Some((n, asset_world::parse_t6_vision(&String::from_utf8_lossy(bytes))?))
+            })
+            .collect();
+        report.push(format!(
+            "t6 match visions: {} ({})",
+            visions.len(),
+            visions.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().join(", ")
+        ));
+        asset_world::register_t6_visions(visions);
+    }
+
     // Weapons: later zones replace earlier ones of the same name.
     let mut weapon_refs: HashMap<String, &asset_t6::WeaponRef> = HashMap::new();
     let mut weapon_order: Vec<String> = Vec::new();
@@ -2100,6 +2144,16 @@ pub(crate) fn load_t6_combat(
                 let text = String::from_utf8_lossy(bytes).into_owned();
                 scripts.animstatedefs.retain(|(n, _)| n != name);
                 scripts.animstatedefs.push((name.clone(), text));
+            }
+            // bo2mp: the shellshocks (`shock/flashbang.shock`, ...).
+            let lower = name.replace('\\', "/").to_ascii_lowercase();
+            if let Some(shock) = lower
+                .strip_prefix("shock/")
+                .and_then(|n| n.strip_suffix(".shock"))
+            {
+                let text = String::from_utf8_lossy(bytes).into_owned();
+                scripts.shocks.retain(|(n, _)| n != shock);
+                scripts.shocks.push((shock.to_owned(), text));
             }
             if name.contains("/gamesettings_") && name.ends_with(".cfg") {
                 let text = String::from_utf8_lossy(bytes).into_owned();

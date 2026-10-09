@@ -19,7 +19,7 @@ pub fn air_move<C: CollisionBackend>(
     bounds: MoveBounds,
     collision: &C,
 ) {
-    friction(ps, pml);
+    friction(ps, pml, false);
 
     let command_scale = cmd_scale(ps, cmd, context.player_spectate_speed_scale);
     let mut forward = pml.forward;

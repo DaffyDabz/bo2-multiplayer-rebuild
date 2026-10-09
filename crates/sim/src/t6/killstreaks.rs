@@ -62,6 +62,25 @@ pub(crate) struct Streaks {
     pub vehicle_drive: BTreeMap<String, super::T6VehicleDrive>,
     /// The minimap's frame (`setminimap`): upper left, north, world size.
     pub minimap: Option<hud_iw4::CompassMapBounds>,
+    /// bo2mp vehicle screens: each player's server vision by client
+    /// (`useservervisionset` on, `setvisionsetforplayer` name).
+    pub server_vision: BTreeMap<u32, (bool, String)>,
+    /// Missiles that went off while a player still rode them: their script
+    /// objects live until the ride's own script has finished (see
+    /// `projectiles`), by entity -> level time it is freed at the latest.
+    pub late_free: BTreeMap<u32, i32>,
+}
+
+/// His client's vision dvar (`bo2mp_vision`): the server's vision for him
+/// while `useservervisionset` is on, "" for the map's own.
+fn publish_vision(world: &mut World, client: u32) {
+    let shown = streaks(world)
+        .server_vision
+        .get(&client)
+        .filter(|(on, name)| *on && !name.is_empty())
+        .map(|(_, name)| name.clone())
+        .unwrap_or_default();
+    super::set_client_dvar(world, client, "bo2mp_vision", &shown);
 }
 
 /// A new map: fresh scorestreak state, the vehicles' weapons from his zones.
@@ -108,6 +127,13 @@ fn streaks(world: &mut World) -> bevy_ecs::prelude::Mut<'_, Streaks> {
         world.insert_resource(Streaks::default());
     }
     world.resource_mut::<Streaks>()
+}
+
+/// He is in a scorestreak vehicle (BO2's eFlags 0x4000, EF_IN_VEHICLE).
+pub(super) fn riding(world: &World, client: u32) -> bool {
+    world
+        .get_resource::<Streaks>()
+        .is_some_and(|s| s.rides.contains_key(&client))
 }
 
 pub(super) fn bind(vm: &mut Vm<World>) {
@@ -275,6 +301,37 @@ pub(super) fn bind(vm: &mut Vm<World>) {
     ] {
         vm.bind(name, true, |_, _, _, _| Ok(Value::Undefined));
     }
+    // bo2mp vehicle screens: a player's own vision from the server
+    // (_helicopter_gunner.gsc visionswitch: `useservervisionset(1)` then
+    // `setvisionsetforplayer(level.chopper_enhanced_vision, 1)`, the
+    // remote_mortar_enhanced vision; `useservervisionset(0)` when he leaves).
+    // His client grades its frame with it (its fade time is not run).
+    m!("useservervisionset", |vm, world, s, a| {
+        let id = super::client(vm, world, s)?;
+        let on = arg(a, 0).as_float().unwrap_or(0.0) != 0.0;
+        streaks(world).server_vision.entry(id.0).or_default().0 = on;
+        publish_vision(world, id.0);
+        Ok(Value::Undefined)
+    });
+    m!("setvisionsetforplayer", |vm, world, s, a| {
+        let id = super::client(vm, world, s)?;
+        let name = text(vm, a, 0);
+        diag::info!(Sim, "bo2mp: setvisionsetforplayer {name} for player {}", id.0);
+        streaks(world).server_vision.entry(id.0).or_default().1 = name;
+        publish_vision(world, id.0);
+        Ok(Value::Undefined)
+    });
+    // The gunner's FLIR toggle (_helicopter_gunner.gsc visionswitch polls his
+    // change seat button, the HUD's `[{+weapnext_inventory}]` prompt, then
+    // waits for it to be let go). His client puts the wheel-up bind on the
+    // command's CHANGE_SEAT button.
+    m!("changeseatbuttonpressed", |vm, world, s, _| {
+        let id = super::client(vm, world, s)?;
+        let held = crate::script_player::buttons(&mut frame(world), id);
+        Ok(Value::bool(
+            held & playerstate_iw4::buttons::CHANGE_SEAT != 0,
+        ))
+    });
     // A dropped crate falls (`physicslaunch`): straight down under gravity
     // from where it was let go, then `stationary` where it lands.
     m!("physicslaunch", |vm, world, s, a| {
@@ -428,6 +485,10 @@ pub(super) fn bind(vm: &mut Vm<World>) {
                 ..Default::default()
             });
         }
+        // BO2's HUD hears the ride the way it hears the drones' (`bo2mp_vehicle`
+        // = "<weapon> <seat>"): its Hellstorm screen is PredatorHUD.
+        super::set_client_dvar(world, id.0, "bo2mp_vehicle", "remote_missile_mp 0");
+        diag::info!(Sim, "bo2mp hellstorm: player {} rides the missile (projectile {pid})", id.0);
         Ok(Value::Undefined)
     });
     m!("unlinkfrommissile", |vm, world, s, _| {
@@ -436,6 +497,8 @@ pub(super) fn bind(vm: &mut Vm<World>) {
         if f.client_meta(id).is_some() {
             f.client_meta_mut(id).remote_missile = None;
         }
+        super::set_client_dvar(world, id.0, "bo2mp_vehicle", "");
+        diag::info!(Sim, "bo2mp hellstorm: player {} lets go of the missile", id.0);
         Ok(Value::Undefined)
     });
     // A missile homes on what the scripts name (the Hunter Killer's car).
@@ -995,10 +1058,35 @@ pub(super) fn advance(world: &mut World) {
     falling(world);
     use_models(world);
     ride::advance(world);
+    missile_hud_end(world);
     craft::advance(world);
     turret::advance(world);
     publish_radar(world);
     hand_log(world);
+}
+
+/// The Hellstorm screen closes when the ride is over, however the engine
+/// let go of the missile (it hit, it was shot, the rider died): the HUD
+/// hears `bo2mp_vehicle` go empty, as `player_missile_end` ends the screen.
+fn missile_hud_end(world: &mut World) {
+    let over: Vec<u32> = {
+        let mut f = frame(world);
+        f.client_ids_sorted()
+            .into_iter()
+            .filter(|&id| {
+                f.client_meta(id).is_some_and(|m| {
+                    m.client_dvars
+                        .iter()
+                        .any(|(k, v)| k == "bo2mp_vehicle" && v.starts_with("remote_missile_mp"))
+                        && !m.remote_missile.is_some_and(|l| l.unlink_at_ms.is_none())
+                })
+            })
+            .map(|id| id.0)
+            .collect()
+    };
+    for id in over {
+        super::set_client_dvar(world, id, "bo2mp_vehicle", "");
+    }
 }
 
 /// A new entity's `birthtime`: the server time it came (the spy plane
@@ -1050,6 +1138,10 @@ fn notify_all(world: &mut World, events: Vec<(u32, &'static str, Vec<Value>)>) {
         }
     });
 }
+
+/// The longest a ridden missile's object waits for its ride's script to
+/// end (it needs a quarter second of fade): a safety, not a rule.
+const RIDE_END_MS: i32 = 3000;
 
 fn projectiles(world: &mut World) {
     let live: Vec<crate::ProjectileState> = crate::frame::collect_projectiles(world)
@@ -1115,9 +1207,47 @@ fn projectiles(world: &mut World) {
         if keep.contains_key(id) {
             continue;
         }
+        diag::info!(Sim, "bo2mp streaks: projectile {id} (ent {}) went off at {:?}", t.ent, t.origin);
         events.push((t.ent, "explode", vec![Value::Vec3(t.origin)]));
         events.push((t.ent, "death", Vec::new()));
-        gone.push(t.ent);
+        // A missile someone rides stays an object until his ride's script
+        // is done with it: `watch_missile_death` ends on `deleted`, yet it is
+        // `death` that starts `player_missile_end` (the fade, `hide`,
+        // `unlinkfrommissile`), which waits a quarter second (_remotemissile.gsc).
+        let ridden = {
+            let mut f = frame(world);
+            f.client_ids_sorted().into_iter().any(|c| {
+                f.client_meta(c)
+                    .and_then(|m| m.remote_missile)
+                    .is_some_and(|l| l.projectile.0 == *id && l.unlink_at_ms.is_none())
+            })
+        };
+        if ridden {
+            let until = crate::level_time_ms(super::tick(world)) + RIDE_END_MS;
+            streaks(world).late_free.insert(t.ent, until);
+        } else {
+            gone.push(t.ent);
+        }
+    }
+    // The ridden ones go once their rider has let go (or time is up).
+    {
+        let now = crate::level_time_ms(super::tick(world));
+        let held: Vec<u32> = streaks(world).late_free.keys().copied().collect();
+        for ent in held {
+            let riding = {
+                let mut f = frame(world);
+                f.client_ids_sorted().into_iter().any(|c| {
+                    f.client_meta(c)
+                        .and_then(|m| m.remote_missile)
+                        .is_some_and(|l| l.unlink_at_ms.is_none())
+                })
+            };
+            let until = streaks(world).late_free.get(&ent).copied().unwrap_or(0);
+            if !riding || now >= until {
+                streaks(world).late_free.remove(&ent);
+                gone.push(ent);
+            }
+        }
     }
     streaks(world).thrown = keep;
     // Homing missiles turn toward their target's middle.

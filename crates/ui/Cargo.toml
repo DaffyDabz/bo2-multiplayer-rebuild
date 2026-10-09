@@ -18,6 +18,7 @@ net = { path = "../net" }
 session.workspace = true
 sim.workspace = true
 hks_t6.workspace = true # bo2zm M4
+asset_world.workspace = true # bo2mp vehicle screens (server vision)
 
 [lints]
 workspace = true

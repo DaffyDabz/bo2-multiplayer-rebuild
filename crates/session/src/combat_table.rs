@@ -164,6 +164,9 @@ pub fn from_registry(
                     refused.push(format!("{}({reason:?})", weapons.name_of(i as u32)));
                     WeaponCombatFacts::none()
                 });
+            facts.sprint_cycle_scale = f.bob.sprint_cycle_scale;
+            facts.ducked_sprint_cycle_scale = f.bob.ducked_sprint_cycle_scale;
+            facts.dtp_cycle_scale = f.bob.dtp_cycle_scale;
             facts.alternate_weapon = weapons.alternate_of(i as u32);
             facts.dual_wield_weapon = weapons.dual_wield_weapon_of(i as u32);
             facts.aim_assist = weapon_iw4::AimAssistRanges {

@@ -452,6 +452,8 @@ fn publish_loop_sounds(world: &mut World) {
         .into_iter()
         .map(
             |(owner, alias, origin)| crate::world_objects::DestructibleLoopSound {
+                volume: 100,
+                pitch: 100,
                 owner,
                 alias_index: frame.sound_alias_index(&alias),
                 origin,

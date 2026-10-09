@@ -166,10 +166,8 @@ impl PcmDecoder {
     }
 }
 
-impl Iterator for PcmDecoder {
-    type Item = f32;
-
-    fn next(&mut self) -> Option<f32> {
+impl PcmDecoder {
+    fn next_sample(&mut self) -> Option<f32> {
         if let Some(right) = self.pending_right.take() {
             return Some(right);
         }
@@ -188,6 +186,18 @@ impl Iterator for PcmDecoder {
         self.pos += ch;
         self.pending_right = Some(right * gain_r);
         Some(left * gain_l)
+    }
+}
+
+impl Iterator for PcmDecoder {
+    type Item = f32;
+
+    fn next(&mut self) -> Option<f32> {
+        let sample = self.next_sample()?;
+        // IW4L_SOUND=off: every voice still plays (sinks, timing, loop and
+        // stop all run as normal, so the log can prove them) but the device
+        // only ever receives digital silence.
+        Some(if crate::AudioSilent::active() { 0.0 } else { sample })
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {

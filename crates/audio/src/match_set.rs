@@ -25,6 +25,15 @@ impl AudioSilent {
             std::env::var("IW4L_SOUND").is_ok_and(|value| matches!(value.as_str(), "off" | "0"))
         })
     }
+
+    /// Silent runs that log sound (IW4L_SOUND_LOG) still compose the map's
+    /// sound bank and prepare its clips, so the real alias lookups, starts,
+    /// loops and stops happen and reach the log; the PCM decoder hands the
+    /// device zeros, so nothing is ever audible. Without the bank every
+    /// lookup fell back to the iw4 namespace and no BO2 alias resolved.
+    pub fn composes() -> bool {
+        Self::active() && std::env::var_os("IW4L_SOUND_LOG").is_some()
+    }
 }
 
 const MATCH_HUD_PULSE: &[&str] = &["ui_pulse_text_type", "ui_pulse_text_delete"];
@@ -121,7 +130,7 @@ fn queue_match_clips(
     if ready.0 || prep.submitted {
         return;
     }
-    if silent.is_some() {
+    if silent.is_some() && !AudioSilent::composes() {
         ready.0 = true;
         if let Some(loading) = loading.as_ref() {
             loading

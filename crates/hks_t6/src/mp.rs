@@ -117,6 +117,9 @@ const ENGINE_DVARS: &[(&str, &str)] = &[
 pub struct MpState {
     /// The items and his stats, made from the string tables on first use.
     pub profile: Profile,
+    /// The stats commands carried out since the owner last took them
+    /// (`apply_stat_commands`, `PermanentlyUnlockItem`), for its log.
+    pub stat_log: Vec<String>,
     /// His stats file's values until the tables arrive (`load_text`).
     saved: Option<HashMap<String, StatValue>>,
     loaded: bool,
@@ -605,20 +608,49 @@ pub fn set_gametype_defaults(v: &RefCell<EngineValues>, gametype: &str) {
     crate::host::run_command(v, &format!("exec mp/gamesettings_default.cfg; exec mp/gamesettings_{gametype}.cfg"));
 }
 
+/// mp/rankIconTable.csv's `maxprestige` (BO2's Prestige Master).
+pub fn max_prestige(v: &EngineValues) -> i32 {
+    table_rows(v, "mp/rankicontable.csv").iter().find(|r| cell(r, 0) == "maxprestige").map_or(0, |r| int(r, 1))
+}
+
+/// A rank's icon at a prestige: mp/rankIconTable.csv, the rank's row (0 =
+/// level 1), the prestige's column (1 = none, 2 = prestige 1, ...).
+pub fn rank_icon(v: &EngineValues, rank: i32, prestige: i32) -> String {
+    table_rows(v, "mp/rankicontable.csv")
+        .iter()
+        .find(|r| cell(r, 0) == rank.to_string())
+        .and_then(|r| r.get(usize::try_from(prestige).unwrap_or(0) + 1))
+        .map(|c| c.trim().to_owned())
+        .unwrap_or_default()
+}
+
+/// Carry out the stats commands the last console lines queued
+/// (`EngineValues::stat_commands`: mp/prestige_reset.cfg's) on his stats
+/// (`Profile::run_stat_command`); the front end saves them.
+pub fn apply_stat_commands(mp: &Mp, values: &RefCell<EngineValues>) {
+    let cmds = std::mem::take(&mut values.borrow_mut().stat_commands);
+    if cmds.is_empty() {
+        return;
+    }
+    let v = values.borrow();
+    let max = max_prestige(&v);
+    let localize = |k: &str| v.localize.get(k).cloned();
+    let mut m = mp.borrow_mut();
+    for c in cmds {
+        let done = m.profile.run_stat_command(&c, max, &localize);
+        m.stat_log.push(format!("{c}: {}", if done { "done" } else { "not carried out" }));
+    }
+}
+
 /// His row in the lobby's player lists (CoD.PlayerListRow reads these):
 /// his name (BO2's `name` dvar), his level and its icon
 /// (mp/rankIconTable.csv: the row of his rank, the column of his prestige),
 /// the party's host, ready; in a private match on the allies (a team game
 /// lists its teams), else on no team.
 fn lobby_member(m: &MpState, v: &EngineValues, (allies, free): (f32, f32)) -> crate::value::TableRef {
-    let rank = m.stat("playerstatslist.rank.statvalue").as_num().unwrap_or(0.0).max(0.0) as usize;
-    let prestige = m.stat("playerstatslist.plevel.statvalue").as_num().unwrap_or(0.0).max(0.0) as usize;
-    let icon = table_rows(v, "mp/rankicontable.csv")
-        .iter()
-        .find(|r| r.first().is_some_and(|c| c.trim() == rank.to_string()))
-        .and_then(|r| r.get(prestige + 1))
-        .cloned()
-        .unwrap_or_default();
+    let rank = m.profile.rank().max(0);
+    let prestige = m.profile.plevel().max(0);
+    let icon = rank_icon(v, rank, prestige);
     let name = v.dvars.get("name").filter(|n| !n.trim().is_empty()).cloned().unwrap_or_else(|| "Player".to_owned());
     let private = m.game_modes.contains(&1);
     let e = Table::new_ref();
@@ -1028,7 +1060,39 @@ pub fn install(host: &mut Host) -> Mp {
             .map_or(1, |row| int(row, 1).max(1));
         Ok(vec![Value::Num(max as f32)])
     });
-    host.bind("Engine", "GetPermanentUnlockCount", zero);
+    // Prestige tokens (bo2_profile's Prestige notes):
+    // GetPermanentUnlockCount(controller) = those unspent (Create-a-Class's
+    // footer), IsPrestigeTokenSpent(controller) = this prestige's one
+    // (the Barracks' Prestige Awards card),
+    // IsItemPermanentlyUnlocked(controller, item), PermanentlyUnlockItem(
+    // controller, item) (ConfirmPrestigeUnlock).
+    let (st, m) = (state.clone(), mp.clone());
+    host.bind("Engine", "GetPermanentUnlockCount", move |_, _| {
+        Ok(vec![Value::Num(st(&m).borrow().profile.prestige_tokens() as f32)])
+    });
+    let (st, m) = (state.clone(), mp.clone());
+    host.bind("Engine", "IsPrestigeTokenSpent", move |_, _| Ok(vec![Value::Bool(st(&m).borrow().profile.prestige_token_spent())]));
+    let (st, m) = (state.clone(), mp.clone());
+    host.bind("Engine", "IsItemPermanentlyUnlocked", move |_, a| {
+        Ok(vec![Value::Bool(st(&m).borrow().profile.permanently_unlocked(num(&a, 1)))])
+    });
+    let (st, m) = (state.clone(), mp.clone());
+    host.bind("Engine", "PermanentlyUnlockItem", move |_, a| {
+        let i = num(&a, 1);
+        let m = st(&m);
+        let done = m.borrow_mut().profile.permanently_unlock(i);
+        m.borrow_mut().stat_log.push(format!("PermanentlyUnlockItem {i}: {}", if done { "done" } else { "refused" }));
+        Ok(vec![])
+    });
+    // ExecNow(controller, command): config files and dvars (the host's),
+    // then the stats commands they ran (mp/prestige_reset.cfg).
+    let (st, m, v) = (state.clone(), mp.clone(), host.values.clone());
+    host.bind("Engine", "ExecNow", move |_, a| {
+        let cmd = a.iter().rev().find_map(|v| v.as_str().map(str::to_owned)).unwrap_or_default();
+        crate::host::run_command(&v, &cmd);
+        apply_stat_commands(&st(&m), &v);
+        Ok(vec![])
+    });
     host.bind("UIExpression", "GetUnlockIndexFromGroupName", zero);
     host.bind("UIExpression", "GetUnlockLocString", |_, _| Ok(vec![Value::str("")]));
 
@@ -1139,21 +1203,25 @@ pub fn install(host: &mut Host) -> Mp {
         let ping = r.filter(|r| r.client == 0).map_or(0, |r| 12 + r.name.bytes().map(u32::from).sum::<u32>() % 5);
         Ok(vec![Value::Num(ping as f32)])
     });
-    for name in ["GetPrestigeForScoreboardIndex", "GetRoundsPlayed"] {
-        host.bind("Engine", name, zero);
-    }
-    // (Every bot is level 1.)
-    host.bind("Engine", "GetRankForScoreboardIndex", |_, _| Ok(vec![Value::Num(1.0)]));
-    // (A bot's level 1 icon, its row of mp/rankIconTable.csv.)
-    let v = host.values.clone();
-    host.bind("Engine", "GetRankIconForScoreboardIndex", move |_, _| {
-        let icon = table_rows(&v.borrow(), "mp/rankicontable.csv")
-            .iter()
-            .find(|r| r.first().is_some_and(|c| c.trim() == "1"))
-            .and_then(|r| r.get(1))
-            .cloned()
-            .unwrap_or_default();
-        Ok(vec![Value::str(&icon)])
+    host.bind("Engine", "GetRoundsPlayed", zero);
+    // A row's level (1 first), prestige and their icon (mp/rankIconTable.csv):
+    // his own (client 0) from his stats; every bot is level 1, no prestige,
+    // with the table's row "1" icon (as before).
+    let (st, m) = (state.clone(), mp.clone());
+    let his_rank = move |a: &[Value]| -> Option<(i32, i32)> {
+        let m = st(&m);
+        let m = m.borrow();
+        let his = usize::try_from(num(a, 0)).ok().and_then(|i| m.board.get(i)).is_some_and(|r| r.client == 0);
+        his.then(|| (m.profile.rank().max(0), m.profile.plevel().max(0)))
+    };
+    let hr = his_rank.clone();
+    host.bind("Engine", "GetRankForScoreboardIndex", move |_, a| Ok(vec![Value::Num(hr(&a).map_or(1, |(r, _)| r + 1) as f32)]));
+    let hr = his_rank.clone();
+    host.bind("Engine", "GetPrestigeForScoreboardIndex", move |_, a| Ok(vec![Value::Num(hr(&a).map_or(0, |(_, p)| p) as f32)]));
+    let (hr, v) = (his_rank, host.values.clone());
+    host.bind("Engine", "GetRankIconForScoreboardIndex", move |_, a| {
+        let (rank, prestige) = hr(&a).unwrap_or((1, 0));
+        Ok(vec![Value::str(&rank_icon(&v.borrow(), rank, prestige))])
     });
     // The status icon beside a row: the dead icon once the match is over.
     let m = mp.clone();
@@ -1183,12 +1251,15 @@ pub fn install(host: &mut Host) -> Mp {
     host.bind("Engine", "GetCalloutPlayerData", move |_, a| {
         let client = arg(&a, a.len().saturating_sub(1)).as_num().map_or(0, |n| n as i32);
         let name = m.borrow().board.iter().find(|r| r.client == client).map(|r| r.name.clone());
-        let icon = table_rows(&v.borrow(), "mp/rankicontable.csv")
-            .iter()
-            .find(|r| r.first().is_some_and(|c| c.trim() == "1"))
-            .and_then(|r| r.get(1))
-            .cloned()
-            .unwrap_or_default();
+        // His own card: his level and prestige; a bot's level 1.
+        let (rank, prestige) = if client == 0 {
+            let m = m.borrow();
+            (m.profile.rank().max(0), m.profile.plevel().max(0))
+        } else {
+            (1, 0)
+        };
+        let icon = rank_icon(&v.borrow(), rank, prestige);
+        let shown = if client == 0 { rank + 1 } else { 1 };
         let t = Table::new_ref();
         {
             let mut t = t.borrow_mut();
@@ -1203,8 +1274,8 @@ pub fn install(host: &mut Host) -> Mp {
             t.set_str("playerName", Value::str(&bare));
             t.set_str("clanTag", Value::str(&if tag.is_empty() { String::new() } else { format!("[{tag}]") }));
             t.set_str("playerClientNum", Value::Num(client as f32));
-            t.set_str("rank", Value::Num(1.0));
-            t.set_str("prestige", Value::Num(0.0));
+            t.set_str("rank", Value::Num(shown as f32));
+            t.set_str("prestige", Value::Num(prestige as f32));
             t.set_str("rankIcon", Value::str(&icon));
         }
         Ok(vec![Value::Table(t)])

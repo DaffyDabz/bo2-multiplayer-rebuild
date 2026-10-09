@@ -304,6 +304,8 @@ pub struct WeaponBodyFacts {
 
     pub sway: WeaponSwayFacts,
 
+    pub bob: WeaponBobFacts,
+
     pub dual_wield_view_model_offset: f32,
 
     pub no_dual_wield: bool,
@@ -409,6 +411,32 @@ impl WeaponKickFacts {
             hip_view_kick_yaw_max: c.hip_view_kick_yaw_max,
             hip_view_kick_min_magnitude: 0.0,
             ads_view_kick_min_magnitude: 0.0,
+        }
+    }
+}
+
+/// bo2zm: Black Ops II per-gun sprint and dive-to-prone bob. The cycle
+/// scales speed up the footstep rhythm; the bob pairs scale the gun's
+/// sideways [0] and up-down [1] bob. Guns without these fields keep 1.0.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WeaponBobFacts {
+    pub sprint_cycle_scale: f32,
+    pub ducked_sprint_cycle_scale: f32,
+    pub dtp_cycle_scale: f32,
+    pub sprint_bob: [f32; 2],
+    pub ducked_sprint_bob: [f32; 2],
+    pub dtp_bob: [f32; 2],
+}
+
+impl Default for WeaponBobFacts {
+    fn default() -> Self {
+        Self {
+            sprint_cycle_scale: 1.0,
+            ducked_sprint_cycle_scale: 1.0,
+            dtp_cycle_scale: 1.0,
+            sprint_bob: [1.0; 2],
+            ducked_sprint_bob: [1.0; 2],
+            dtp_bob: [1.0; 2],
         }
     }
 }
@@ -1775,6 +1803,7 @@ impl WeaponCatalog {
                 min_damage_range: geometry.min_damage_range,
                 kick: WeaponKickFacts::from_capture(geometry.kick),
                 sway: WeaponSwayFacts::from_capture(geometry.sway),
+                bob: WeaponBobFacts::default(),
                 dual_wield_view_model_offset: geometry.dual_wield_view_model_offset,
                 no_dual_wield: geometry.no_dual_wield,
             },

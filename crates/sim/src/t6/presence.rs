@@ -52,7 +52,8 @@ const PIECE_BIT: u32 = 0x8000_0000;
 /// perk machine's hum, a power-up's hum), each where its entity stands,
 /// owned by its model row (or its number, for an entity with no model).
 pub(super) fn publish_loops(world: &mut World) {
-    let rows: Vec<(ScriptModelId, String, [f32; 3])> = {
+    let engines = super::engine_sounds::rows(world);
+    let mut rows: Vec<(ScriptModelId, String, [f32; 3], f32, f32)> = {
         let zm = world.resource::<Zm>();
         zm.ents
             .iter()
@@ -62,18 +63,32 @@ pub(super) fn publish_loops(world: &mut World) {
                     || ScriptModelId::from_wire(0x2000_0000 | (n & 0x0fff_ffff)),
                     |s| s.id,
                 );
-                Some((owner, alias, e.origin))
+                Some((owner, alias, e.origin, 1.0, 1.0))
             })
             .collect()
     };
+    // Helicopter and drone engines (BO2's client script's loops), owned by
+    // the vehicle's model row as its other loops are.
+    {
+        let zm = world.resource::<Zm>();
+        for (n, alias, origin, volume, pitch) in engines {
+            let owner = zm.presences.by_ent.get(&n).map_or_else(
+                || ScriptModelId::from_wire(0x2000_0000 | (n & 0x0fff_ffff)),
+                |s| s.id,
+            );
+            rows.push((owner, alias.to_owned(), origin, volume, pitch));
+        }
+    }
     let mut f = frame(world);
     let rows = rows
         .into_iter()
         .map(
-            |(owner, alias, origin)| crate::world_objects::DestructibleLoopSound {
+            |(owner, alias, origin, volume, pitch)| crate::world_objects::DestructibleLoopSound {
                 owner,
                 alias_index: f.sound_alias_index(&alias),
                 origin,
+                volume: crate::world_objects::DestructibleLoopSound::hundredths(volume),
+                pitch: crate::world_objects::DestructibleLoopSound::hundredths(pitch),
             },
         )
         .collect();

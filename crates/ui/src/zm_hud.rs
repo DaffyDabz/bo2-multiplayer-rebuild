@@ -852,6 +852,7 @@ fn zm_script_hud(
                                 picture: pic,
                                 uv: Vec4::new(0.0, 0.0, 1.0, 1.0),
                                 encoded: if lens.is_some() { 1.0 } else { 0.0 },
+                                color_add: 0.0,
                             })),
                             ZIndex(e.sort - 1000),
                             node,

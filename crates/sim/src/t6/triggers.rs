@@ -182,8 +182,15 @@ pub(super) fn dispatch(world: &mut World) {
             let fwd = gsc_t6::math::angle_vectors(ps.map_or([0.0; 3], |p| p.viewangles)).0;
             (eye, fwd)
         };
+        // In a vehicle he has no use hint and uses nothing (BO2's
+        // Player_UpdateCursorHints and the use scan both stop while
+        // eFlags 0x4000 is set).
+        let in_vehicle = super::killstreaks::riding(world, client);
         let mut best: Option<(f32, ObjRef, Option<String>)> = None;
         for (_, e, k) in &triggers {
+            if in_vehicle && *k == Kind::Use {
+                continue;
+            }
             if e.invisible_to.contains(&client) || e.invisible_to_all {
                 continue;
             }

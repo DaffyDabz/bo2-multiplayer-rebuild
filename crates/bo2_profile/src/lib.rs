@@ -327,7 +327,7 @@ impl Profile {
 
     /// His rank (0 = level 1).
     pub fn rank(&self) -> i32 {
-        self.stat_num("playerstatslist.rank.statvalue") as i32
+        self.stat_num(RANK) as i32
     }
 
     pub fn item(&self, i: i32) -> Option<&Item> {
@@ -339,9 +339,9 @@ impl Profile {
     }
 
     /// Locked: above his rank, unless everything is free (BO2's custom
-    /// games unlock every item).
+    /// games unlock every item) or a prestige token unlocked it for good.
     pub fn locked(&self, i: i32, all_free: bool) -> bool {
-        !all_free && self.item(i).is_some_and(|it| it.unlock_rank > self.rank())
+        !all_free && self.item(i).is_some_and(|it| it.unlock_rank > self.rank()) && !self.permanently_unlocked(i)
     }
 
     /// His unlock tokens (BO2's `unlocks[0]`, the pool its Create-a-Class
@@ -353,7 +353,9 @@ impl Profile {
     /// An item's own: free with its rank, or bought with a token
     /// (`itemstats.<i>.purchased`).
     pub fn purchased(&self, i: i32, all_free: bool) -> bool {
-        all_free || self.item(i).is_some_and(|it| !it.token || self.stat_num(&format!("itemstats.{i}.purchased")) != 0.0)
+        all_free
+            || self.item(i).is_some_and(|it| !it.token || self.stat_num(&format!("itemstats.{i}.purchased")) != 0.0)
+            || self.permanently_unlocked(i)
     }
 
     /// Spend `cost` tokens on an item his rank has reached (BO2's
@@ -498,6 +500,157 @@ impl Profile {
     }
 }
 
+/// His rank (0 = level 1), rank XP and prestige: BO2's
+/// `playerstatslist.<RANK|RANKXP|PLEVEL>.statvalue` (CoDBase's
+/// `UIExpression.GetStatByName(controller, "PLEVEL")`).
+pub const RANK: &str = "playerstatslist.rank.statvalue";
+pub const RANK_XP: &str = "playerstatslist.rankxp.statvalue";
+pub const PLEVEL: &str = "playerstatslist.plevel.statvalue";
+
+/// Prestige. BO2's menus decide when he may enter it (CoDBase's
+/// PrestigeAvail: his prestige under mp/rankIconTable.csv's `maxprestige`,
+/// his rank XP at mp/rankTable.csv's last rank's end) and run
+/// mp/prestige_reset.cfg, whose stats commands land here
+/// (`run_stat_command`). Each prestige gives one prestige token (the
+/// Barracks' `Engine.IsPrestigeTokenSpent(controller)` asks after the
+/// current prestige's one), spent on a permanent unlock (Create-a-Class's
+/// `Engine.PermanentlyUnlockItem(controller, item)`): kept as
+/// `prestigetokens.<prestige>.tokenspent` and `.itemunlocked`.
+impl Profile {
+    /// His prestige (0 = none).
+    pub fn plevel(&self) -> i32 {
+        self.stat_num(PLEVEL) as i32
+    }
+
+    fn token_key(level: i32, field: &str) -> String {
+        format!("prestigetokens.{level}.{field}")
+    }
+
+    fn token_unspent(&self, level: i32) -> bool {
+        self.stat_num(&Profile::token_key(level, "tokenspent")) == 0.0
+    }
+
+    /// Whether his current prestige's token is spent (none before his first
+    /// prestige).
+    pub fn prestige_token_spent(&self) -> bool {
+        let p = self.plevel();
+        p <= 0 || !self.token_unspent(p)
+    }
+
+    /// His prestige tokens not yet spent (one per prestige reached).
+    pub fn prestige_tokens(&self) -> i32 {
+        (1..=self.plevel()).filter(|l| self.token_unspent(*l)).count() as i32
+    }
+
+    /// An item one of his prestige tokens unlocked for good: unlocked and
+    /// his whatever his rank, through every later prestige.
+    pub fn permanently_unlocked(&self, i: i32) -> bool {
+        (1..=self.plevel()).any(|l| {
+            self.stat(&Profile::token_key(l, "itemunlocked")).and_then(StatValue::as_num).is_some_and(|n| n as i32 == i)
+        })
+    }
+
+    /// Spend a prestige token on an item (BO2's `PermanentlyUnlockItem`):
+    /// his current prestige's token first, else the latest one unspent.
+    /// False when he has none or the item is his for good already.
+    pub fn permanently_unlock(&mut self, i: i32) -> bool {
+        if self.item(i).is_none() || self.permanently_unlocked(i) {
+            return false;
+        }
+        let Some(level) = (1..=self.plevel()).rev().find(|l| self.token_unspent(*l)) else {
+            return false;
+        };
+        self.set_stat(Profile::token_key(level, "tokenspent"), StatValue::Num(1.0));
+        self.set_stat(Profile::token_key(level, "itemunlocked"), StatValue::Num(i as f32));
+        true
+    }
+
+    /// A class back to a default class (`equipdefaultclass <n> <class>`):
+    /// every slot cleared, then the default class's slots.
+    pub fn reset_class(&mut self, set: &str, n: i32, class: &str) {
+        let prefix = format!("{set}.customclass.{n}.");
+        self.stats.retain(|k, _| !k.starts_with(&prefix));
+        for (slot, v) in self.default_class(class) {
+            self.stats.insert(format!("{prefix}{slot}"), StatValue::Num(v as f32));
+        }
+        self.dirty = true;
+    }
+
+    /// `PrestigeStatsReset` (mp/prestige_reset.cfg: "Mark all of the items,
+    /// attachments and options as unpurchased"): every item bought with an
+    /// unlock token is unbought. His unspent unlock tokens, weapon levels
+    /// and permanent unlocks stay (the file touches none of them).
+    pub fn prestige_stats_reset(&mut self) {
+        self.stats.retain(|k, _| !(k.starts_with("itemstats.") && k.ends_with(".purchased")));
+        self.dirty = true;
+    }
+
+    /// `prestigerequest`: the next prestige, up to `max_prestige`
+    /// (mp/rankIconTable.csv `maxprestige`). His rank XP is not checked
+    /// here: mp/prestige_reset.cfg zeroes it on the line before, and the
+    /// menus offer Prestige only at the last rank's end.
+    pub fn prestige_request(&mut self, max_prestige: i32) -> bool {
+        let p = self.plevel();
+        if p >= max_prestige {
+            return false;
+        }
+        self.set_stat(PLEVEL.to_owned(), StatValue::Num((p + 1) as f32));
+        true
+    }
+
+    /// Carry out one of BO2's stats commands (`hks_t6::host::STAT_COMMANDS`,
+    /// as mp/prestige_reset.cfg and mp/reset_classes*.cfg write them):
+    /// `equipdefaultclass <n> <class>` (the public set),
+    /// `equipdefaultclasstoprofile <n> <class>` (the offline profile's),
+    /// `setStatFromLocString <set> customclassname <n> <key>`,
+    /// `setprofilelocclass <n> <key>`, `statwriteddl <path words> <number>`,
+    /// `PrestigeStatsReset`, `prestigerequest`. False for one not carried
+    /// out (a value BO2 computes, `( dvarint( ... ) )`; the Prestige
+    /// Awards' commands).
+    pub fn run_stat_command(&mut self, line: &str, max_prestige: i32, localize: &dyn Fn(&str) -> Option<String>) -> bool {
+        let words: Vec<&str> = line.split_whitespace().collect();
+        let Some(verb) = words.first().map(|w| w.to_ascii_lowercase()) else { return false };
+        let n = |i: usize| words.get(i).and_then(|w| w.parse::<i32>().ok());
+        let text = |key: &str| localize(&key.to_ascii_uppercase()).unwrap_or_else(|| key.to_owned());
+        match verb.as_str() {
+            "equipdefaultclass" | "equipdefaultclasstoprofile" => {
+                let (Some(class), Some(name)) = (n(1), words.get(2)) else { return false };
+                let set = if verb == "equipdefaultclass" { "cacloadouts" } else { "profile.cacloadouts" };
+                self.reset_class(set, class, &name.to_ascii_lowercase());
+                true
+            }
+            "setstatfromlocstring" => {
+                let (Some(set), Some(field), Some(i), Some(key)) = (words.get(1), words.get(2), n(3), words.get(4)) else {
+                    return false;
+                };
+                let path = format!("{}.{}.{i}", set.to_ascii_lowercase(), field.to_ascii_lowercase());
+                self.set_stat(path, StatValue::Str(text(key)));
+                true
+            }
+            "setprofilelocclass" => {
+                let (Some(i), Some(key)) = (n(1), words.get(2)) else { return false };
+                self.set_stat(format!("profile.cacloadouts.customclassname.{i}"), StatValue::Str(text(key)));
+                true
+            }
+            "statwriteddl" => {
+                let Some((value, path)) = words[1..].split_last() else { return false };
+                let Ok(value) = value.parse::<f32>() else { return false };
+                if path.is_empty() || path.iter().any(|w| w.starts_with('(')) {
+                    return false;
+                }
+                self.set_stat(path.join(".").to_ascii_lowercase(), StatValue::Num(value));
+                true
+            }
+            "prestigestatsreset" => {
+                self.prestige_stats_reset();
+                true
+            }
+            "prestigerequest" => self.prestige_request(max_prestige),
+            _ => false,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -565,6 +718,54 @@ mod tests {
         // directly would need that table, so only the free path is asserted).
         p.set_stat("playerstatslist.rankxp.statvalue".to_owned(), StatValue::Num(0.0));
         assert!(p.locked(11, false));
+    }
+
+    /// mp/prestige_reset.cfg's stats lines, as BO2 ships them (with
+    /// mp/reset_classes.cfg's first class and its name).
+    #[test]
+    fn prestige_reset_cfg_resets_rank_purchases_and_classes() {
+        let stats = vec![
+            row(&[(0, "31"), (2, "weapon_assault"), (4, "hk416"), (8, "reflex acog"), (10, "0"), (11, "class_custom_assault"), (13, "primary")]),
+            row(&[(0, "12"), (2, "weapon_assault"), (4, "xpr"), (10, "30"), (13, "primary"), (17, "token")]),
+        ];
+        let loc = |k: &str| (k == "CLASS_SLOT1").then(|| "Custom 1".to_owned());
+        let mut p = Profile::from_tables(&stats, &[], &loc, HashMap::new());
+        for (k, v) in [(RANK, 54.0), (RANK_XP, 1249100.0), (UNLOCK_TOKENS, 3.0), ("itemstats.12.purchased", 1.0)] {
+            p.set_stat(k.to_owned(), StatValue::Num(v));
+        }
+        p.set_stat(Profile::class_key("cacloadouts", 0, "primary"), StatValue::Num(12.0));
+        p.set_stat(Profile::class_key("cacloadouts", 0, "primaryattachment2"), StatValue::Num(2.0));
+        p.set_stat("cacloadouts.customclassname.0".to_owned(), StatValue::Str("Mine".into()));
+        assert!(p.purchased(12, false) && !p.locked(12, false));
+        for line in [
+            "equipdefaultclass 0 class_custom_assault",
+            "setStatFromLocString cacloadouts customclassname 0 CLASS_SLOT1",
+            "PrestigeStatsReset",
+            "statwriteddl playerstatslist rankxp statvalue 0",
+            "statwriteddl playerstatslist rank statvalue 0",
+            "prestigerequest",
+        ] {
+            assert!(p.run_stat_command(line, 11, &loc), "{line}");
+        }
+        assert!(!p.run_stat_command("statwriteddl cacloadouts loadoutVersion ( dvarint( classVersionNumber ) )", 11, &loc));
+        assert_eq!((p.rank(), p.stat_num(RANK_XP), p.plevel()), (0, 0.0, 1));
+        assert!(p.locked(12, false) && !p.purchased(12, false));
+        assert_eq!(p.tokens(), 3, "unspent unlock tokens stay");
+        assert_eq!(p.stat_num(&Profile::class_key("cacloadouts", 0, "primary")), 31.0);
+        assert_eq!(p.stat(&Profile::class_key("cacloadouts", 0, "primaryattachment2")), None);
+        assert_eq!(p.stat("cacloadouts.customclassname.0"), Some(&StatValue::Str("Custom 1".into())));
+        // One prestige token, spent on the XPR: unlocked and his for good.
+        assert_eq!((p.prestige_tokens(), p.prestige_token_spent()), (1, false));
+        assert!(p.permanently_unlock(12));
+        assert!(!p.locked(12, false) && p.purchased(12, false));
+        assert_eq!((p.prestige_tokens(), p.prestige_token_spent()), (0, true));
+        assert!(!p.permanently_unlock(31));
+        // The next prestige keeps it; Prestige Master is the last.
+        p.set_stat(RANK.to_owned(), StatValue::Num(54.0));
+        assert!(p.run_stat_command("PrestigeStatsReset", 11, &loc) && p.run_stat_command("prestigerequest", 11, &loc));
+        assert!(p.permanently_unlocked(12) && p.prestige_tokens() == 1);
+        p.set_stat(PLEVEL.to_owned(), StatValue::Num(11.0));
+        assert!(!p.run_stat_command("prestigerequest", 11, &loc));
     }
 
     #[test]

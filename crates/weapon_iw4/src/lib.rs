@@ -87,7 +87,8 @@ pub use penetration::{
 pub use placement::{
     DUAL_WIELD_VIEW_MODEL_OFFSET_LEFT_SCALE, GUN_DAMAGE_ADS_HALF, GUN_DAMAGE_DEFLECT_MS,
     GUN_DAMAGE_OVERLAY_MIX, GUN_DAMAGE_RETURN_MS, PLACEMENT_ASSEMBLE_STEP_COUNT,
-    StanceTransitionFadeGlobals, VIEWHEIGHT_TARGET_CROUCH, VIEWHEIGHT_TARGET_PRONE,
+    Bo2GunBob, StanceTransitionFadeGlobals, VIEWHEIGHT_TARGET_CROUCH, VIEWHEIGHT_TARGET_PRONE,
+    WEAPON_BOB_AMP_DTP,
     WEAPON_BOB_AMP_DUCKED, WEAPON_BOB_AMP_PRONE, WEAPON_BOB_AMP_SPRINTING, WEAPON_BOB_AMP_STANDING,
     WEAPON_BOB_AMPLITUDE_BASE, WEAPON_BOB_AMPLITUDE_ROLL, WEAPON_BOB_LAG, WEAPON_BOB_MAX,
     WEAPON_BOB_UP_PHASE, WEAPON_IDLE_AMOUNT_DEFAULT, WEAPON_IDLE_FACTOR_LERP,
@@ -145,6 +146,7 @@ pub use view_bob::{
     land_origin_weight, land_origin_z, should_apply_view_org_bob, view_angle_bob, view_bob_cycle,
     view_damage_angles, view_kick_amplitude, view_org_bob, viewweapon_land_origin_z,
 };
+pub use view_bob::{BG_VIEW_KICK_MIN_BO2, VIEW_BOB_AMP_PRONE_BO2, damage_feedback_kick_min}; // bo2zm
 pub use viewmodel::get_viewmodel_weapon_index;
 pub use viewweapon::{
     viewweapon_composed_world_forward, viewweapon_iron_ads_saves_composed_axis,

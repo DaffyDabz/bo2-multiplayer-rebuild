@@ -11,6 +11,7 @@ mod collision;
 mod correct_solid;
 mod crash;
 mod dive; // bo2zm
+mod feel; // bo2zm
 mod dmgtimer;
 mod drop_timers;
 mod events;
@@ -56,6 +57,7 @@ pub use footstep::{
     get_bob_max_speed, ladder_footsteps, should_make_footsteps, surface_type_index,
     surface_type_name, surface_type_to_name,
 };
+pub use feel::{Bo2Feel, PERK_FALLHEIGHT, PERK_FASTADS, quickdraw_ads_rates}; // bo2zm
 pub use friction::friction;
 pub use ground::complete_ground_trace;
 pub use integrate::predict_integrate;

@@ -10,6 +10,7 @@ pub fn complete_ground_trace<C: CollisionBackend>(
     pml: &mut Pml,
     bounds: MoveBounds,
     collision: &C,
+    feel: crate::Bo2Feel, // bo2zm
 ) {
     let origin = ps.origin;
     let probe_depth = if (ps.e_flags & 0xc00) == 0 { 0.25 } else { 0.0 };
@@ -65,7 +66,7 @@ pub fn complete_ground_trace<C: CollisionBackend>(
         pml.almost_ground_plane = 1;
         pml.walking = 1;
         if ps.ground_entity_num == ENTITYNUM_NONE {
-            crate::crash_land(ps, pml);
+            crate::crash_land(ps, pml, feel);
         }
         let entity = trace_entity_id(&trace);
         ps.ground_entity_num = entity;

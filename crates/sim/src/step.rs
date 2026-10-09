@@ -321,6 +321,22 @@ fn run_players_system(ecs: &mut World) {
             let (ads_in_rate, ads_out_rate, rechamber_while_ads, ads_fire_only) = facts
                 .map(|f| f.ads_frac_context())
                 .unwrap_or((1.0 / 200.0, 1.0 / 200.0, true, false));
+            let mut feel = bo2_feel(world.ecs());
+            if feel.on
+                && let Some(f) = facts
+            {
+                // The gun in hand sets its own footstep rhythm scales.
+                feel.sprint_cycle_scale = f.sprint_cycle_scale;
+                feel.ducked_sprint_cycle_scale = f.ducked_sprint_cycle_scale;
+                feel.dtp_cycle_scale = f.dtp_cycle_scale;
+            }
+            let (ads_in_rate, ads_out_rate) = movement_iw4::quickdraw_ads_rates(
+                &ps,
+                ads_in_rate,
+                ads_out_rate,
+                facts.is_some_and(|f| f.weap_class == WEAPCLASS_SNIPER),
+                feel,
+            );
             let (melee_delay_ms, melee_charge_delay_ms) = facts
                 .map(|f| (f.melee_delay_ms, f.melee_charge_delay_ms))
                 .unwrap_or((0, 0));
@@ -340,6 +356,7 @@ fn run_players_system(ecs: &mut World) {
                     .client_meta(*id)
                     .and_then(|m| m.shellshock.as_ref())
                     .is_some_and(|shock| shock.movement),
+                feel,
             );
             // bo2mp: the Hybrid Optic's swap key is the sprint key; tapping it while aimed
             // must not drop ADS (it only swaps the sight).
@@ -712,12 +729,66 @@ fn emit_snapshot_events(_world: &FrameWorld, snapshot: &Snapshot) {
     }
 }
 
-fn harvest_predictable_events(world: &mut FrameWorld, _tick: Tick) {
-    world.for_each_player_mut(|_, ps| {
+/// IW4 weapon class numbering (T6 classes are mapped onto it at load).
+const WEAPCLASS_SNIPER: i32 = 1;
+
+fn harvest_predictable_events(world: &mut FrameWorld, tick: Tick) {
+    let mut falls = Vec::new();
+    world.for_each_player_mut(|id, ps| {
         let mut cursor = ps.old_event_sequence;
-        consume_player_events(ps, &mut cursor, |_| {});
+        consume_player_events(ps, &mut cursor, |e| {
+            if entity_iw4::EntityEventKind(e.event).is_landing_pain() {
+                falls.push((id, e.event_parm, ps.max_health, ps.origin));
+            }
+        });
         ps.old_event_sequence = cursor;
     });
+    for (id, parm, max_health, origin) in falls {
+        apply_fall_damage(world, tick, id, parm, max_health, origin);
+    }
+}
+
+/// BO2 feel M12: a landing that hurts (only Black Ops movement sends one)
+/// costs parm% of max health, or 110% from a full-height fall, worked out in
+/// floats and rounded down (to be checked in real BO2); BO2's own scripts take it as
+/// MOD_FALLING through CodeCallback_PlayerDamage.
+fn fall_damage(parm: i32, max_health: i32) -> i32 {
+    let fraction = if parm < 100 { parm as f32 * 0.01 } else { 1.1 };
+    (max_health as f32 * fraction) as i32
+}
+
+fn apply_fall_damage(
+    world: &mut FrameWorld,
+    tick: Tick,
+    id: ClientId,
+    parm: i32,
+    max_health: i32,
+    origin: [f32; 3],
+) {
+    if !world
+        .client_meta(id)
+        .is_some_and(|m| m.lifecycle == ClientLifecycle::Alive)
+    {
+        return;
+    }
+    let amount = fall_damage(parm, max_health);
+    if amount <= 0 {
+        return;
+    }
+    let hit = crate::script_player::Hit {
+        victim: id,
+        attacker: None,
+        amount,
+        flags: 0,
+        means: "MOD_FALLING",
+        weapon: 0,
+        point: origin,
+        dir: [0.0; 3],
+        hitloc: 0,
+        inflictor: None,
+        commit: None,
+    };
+    crate::script::player_damage(world.ecs(), tick, &hit);
 }
 
 fn emit_attack_events(
@@ -1977,6 +2048,66 @@ fn clip_move_to_players(
     hit
 }
 
+/// bo2zm: the Black Ops II movement rules, on in a Black Ops II game.
+/// `BO2_FEEL=mw2` turns them off (the old MW2 movement) for side-by-side
+/// clips. Values the scripts set win over the defaults.
+fn bo2_feel(ecs: &World) -> movement_iw4::Bo2Feel {
+    static MW2: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    let mw2 =
+        *MW2.get_or_init(|| std::env::var("BO2_FEEL").is_ok_and(|v| v.eq_ignore_ascii_case("mw2")));
+    // The Black Ops II scripts' own dvars (setdvar); none = no T6 game.
+    let Some(t6) = ecs.get_resource::<crate::t6::T6Runtime>() else {
+        return movement_iw4::Bo2Feel::IW4;
+    };
+    if mw2 {
+        return movement_iw4::Bo2Feel::IW4;
+    }
+    let number = |name: &str, default: f32| {
+        t6.vm
+            .dvars
+            .get(name)
+            .and_then(|v| v.trim().parse::<f32>().ok())
+            .unwrap_or(default)
+    };
+    let zombies = t6
+        .vm
+        .dvars
+        .get("mapname")
+        .is_some_and(|m| m.starts_with("zm_"));
+    movement_iw4::Bo2Feel {
+        on: true,
+        sprint_strafe_speed_scale: number("player_sprintStrafeSpeedScale", 0.667),
+        jump_slowdown: number("jump_slowdownEnable", 1.0) != 0.0,
+        // Zombies has its own fall heights; multiplayer reads the dvars.
+        fall_damage_min_height: if zombies {
+            128.0
+        } else {
+            number("bg_fallDamageMinHeight", 128.0)
+        },
+        fall_damage_max_height: if zombies {
+            350.0
+        } else {
+            number("bg_fallDamageMaxHeight", 300.0)
+        },
+        zombies,
+        gravity: number("bg_gravity", 800.0) as i32,
+        // Multiplayer's fall perk; Zombies' PhD Flopper has no bit yet.
+        fall_damage_perk: if zombies {
+            0
+        } else {
+            movement_iw4::PERK_FALLHEIGHT
+        },
+        fast_ads_perk: movement_iw4::PERK_FASTADS,
+        fast_ads_multiplier: number("perk_weapAdsMultiplier", 0.5),
+        // dtp: BO2's dive to prone switch, on in both modes.
+        dive: number("dtp", 1.0) != 0.0,
+        // Set per player from the gun in hand.
+        sprint_cycle_scale: 1.0,
+        ducked_sprint_cycle_scale: 1.0,
+        dtp_cycle_scale: 1.0,
+    }
+}
+
 fn pmove_context(
     old_buttons: u32,
     weapon_scales: (f32, f32, f32),
@@ -1990,6 +2121,7 @@ fn pmove_context(
     melee_charge_delay_ms: i32,
     overlay_reticle: i32,
     shellshock_affects_movement: bool,
+    feel: movement_iw4::Bo2Feel,
 ) -> PmoveSingleContext {
     let player_sprint_time = 4.0_f32;
     let weapon_max_sprint_time = get_max_sprint_time(weapon_scales.2, player_sprint_time);
@@ -2020,6 +2152,7 @@ fn pmove_context(
                 jump_ladder_push_vel: 128.0,
             },
             air,
+            feel,
         },
         air,
         bounds: MoveBounds {
@@ -2108,4 +2241,18 @@ pub(crate) fn arm_held_weapon(
     }
     seed_ps_ammo_tables(ps, weapon, facts, clip0, clip1, last_hand >= 1, stock);
     (clip0, stock)
+}
+
+#[cfg(test)]
+mod fall_damage_tests {
+    use super::fall_damage;
+
+    #[test]
+    fn falls_cost_a_share_of_max_health_rounded_down() {
+        // Worked out in floats: event parm 15 on 100 health is 14 damage.
+        assert_eq!(fall_damage(15, 100), 14);
+        assert_eq!(fall_damage(0, 100), 0);
+        assert_eq!(fall_damage(100, 100), 110);
+        assert_eq!(fall_damage(250, 150), 165);
+    }
 }

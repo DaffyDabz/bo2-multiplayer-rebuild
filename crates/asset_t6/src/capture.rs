@@ -758,6 +758,33 @@ pub struct VehicleDrive {
     /// How far the driver looks up and down from its gun
     /// (`turretViewLimits[2]`, `[3]`).
     pub turret_pitch: [f32; 2],
+    /// `thirdPersonDriver`: the driver's seat views from outside.
+    pub third_person_driver: i32,
+    /// The command each of the vehicle's buttons stands for, in BO2's
+    /// default controller binds (players/bindings_mp.bdg: A +gostand, B
+    /// +stance, X +usereload, Y +weapnext_inventory, LSHLDR +smoke, RSHLDR
+    /// +frag, LSTICK +breath_sprint, RSTICK +melee, LTRIG +speed_throw, RTRIG
+    /// +attack; "" for none): `moveUpButtonName`, `moveDownButtonName`,
+    /// `switchSeatButtonName`, `attackButtonName`, `attackSecondaryButtonName`.
+    /// BO2 puts the vehicle's own commands on the keys he has for these.
+    pub buttons: [&'static str; 5],
+}
+
+/// The command BO2's default controller binds put on a button name.
+fn vehicle_button_command(name: &str) -> &'static str {
+    match name {
+        "BUTTON_A" => "+gostand",
+        "BUTTON_B" => "+stance",
+        "BUTTON_X" => "+usereload",
+        "BUTTON_Y" => "+weapnext_inventory",
+        "BUTTON_LSHLDR" => "+smoke",
+        "BUTTON_RSHLDR" => "+frag",
+        "BUTTON_LSTICK" => "+breath_sprint",
+        "BUTTON_RSTICK" => "+melee",
+        "BUTTON_LTRIG" => "+speed_throw",
+        "BUTTON_RTRIG" => "+attack",
+        _ => "",
+    }
 }
 
 /// Everything one walk captured.
@@ -2242,6 +2269,15 @@ impl WalkSink for ZoneCapture {
                     ],
                     camera_fov: f(l::VehicleDef::cameraFOV),
                     turret_pitch: [f(tv + 8), f(tv + 12)],
+                    third_person_driver: s.i32_at(body, l::VehicleDef::thirdPersonDriver).unwrap_or(0),
+                    buttons: [
+                        l::VehicleDef::moveUpButtonName,
+                        l::VehicleDef::moveDownButtonName,
+                        l::VehicleDef::switchSeatButtonName,
+                        l::VehicleDef::attackButtonName,
+                        l::VehicleDef::attackSecondaryButtonName,
+                    ]
+                    .map(|o| vehicle_button_command(&name_at(o))),
                 };
                 self.vehicles.push(VehicleRef {
                     name: name_at(l::VehicleDef::name),

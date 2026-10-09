@@ -41,6 +41,17 @@ pub struct DestructibleLoopSound {
     pub owner: ScriptModelId,
     pub alias_index: u8,
     pub origin: [f32; 3],
+    /// The loop's volume and pitch scale in hundredths (`setloopstate`;
+    /// 100 = the alias's own level and pitch).
+    pub volume: u8,
+    pub pitch: u8,
+}
+
+impl DestructibleLoopSound {
+    /// A scale (0..2.55) as the row's hundredths.
+    pub fn hundredths(scale: f32) -> u8 {
+        (scale * 100.0).round().clamp(0.0, 255.0) as u8
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]

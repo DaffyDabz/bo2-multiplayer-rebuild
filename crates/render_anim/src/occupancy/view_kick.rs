@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use frame::{LifeStarted, ViewSubject};
 use hud_iw4::{
     CG_FOV_MIN_DEFAULT, CG_FOV_SCALE_DEFAULT, FovInputs, WeaponAdsOverlayFacts, calc_fov_from_ads,
-    horizontal_to_vertical_fov_deg, zoom_sensitivity,
+    horizontal_to_vertical_fov_deg, shellshock_remaining_ms, zoom_sensitivity,
 };
 use math_iw4::{add_lean_to_position, angle_vectors};
 use net::{
@@ -13,8 +13,8 @@ use net::{
 use playerstate_iw4::ENTITYNUM_NONE;
 use weapon_iw4::{
     VIEW_DAMAGE_UNDIRECTED, VIEW_ORG_BOB_Z_MIN_OFS, ViewAngleBobInputs, ViewOrgBobInputs,
-    crash_land_fall_height, crash_land_view_dip, damage_feedback_kick, get_viewmodel_weapon_index,
-    land_origin_z, view_angle_bob, view_damage_angles, view_org_bob, viewweapon_land_origin_z,
+    crash_land_fall_height, crash_land_view_dip, get_viewmodel_weapon_index, land_origin_z,
+    sway_shellshock_landing_scale, view_angle_bob, view_damage_angles, view_org_bob, viewweapon_land_origin_z,
 };
 
 use crate::anim::view_kick_state::{KickParams, ViewKickState, add_kick_to_viewangles};
@@ -62,6 +62,84 @@ fn kick_params(k: &WeaponKickFacts) -> KickParams {
         hip_view_kick_yaw_max: k.hip_view_kick_yaw_max,
         hip_view_kick_min_magnitude: k.hip_view_kick_min_magnitude,
         ads_view_kick_min_magnitude: k.ads_view_kick_min_magnitude,
+    }
+}
+
+/// bo2zm: Black Ops II dual wield, hip fire only. With both guns firing
+/// a shot kicks with the two guns' hip ranges added together; with only the
+/// left gun firing it kicks with the left gun's own ranges.
+fn dual_wield_kick(
+    right: KickParams,
+    left: &KickParams,
+    right_firing: bool,
+    left_firing: bool,
+) -> KickParams {
+    let mut k = right;
+    if right_firing && left_firing {
+        k.hip_view_kick_pitch_min += left.hip_view_kick_pitch_min;
+        k.hip_view_kick_pitch_max += left.hip_view_kick_pitch_max;
+        k.hip_view_kick_yaw_min += left.hip_view_kick_yaw_min;
+        k.hip_view_kick_yaw_max += left.hip_view_kick_yaw_max;
+        k.hip_gun_kick_pitch_min += left.hip_gun_kick_pitch_min;
+        k.hip_gun_kick_pitch_max += left.hip_gun_kick_pitch_max;
+        k.hip_gun_kick_yaw_min += left.hip_gun_kick_yaw_min;
+        k.hip_gun_kick_yaw_max += left.hip_gun_kick_yaw_max;
+    } else if left_firing {
+        k.hip_view_kick_pitch_min = left.hip_view_kick_pitch_min;
+        k.hip_view_kick_pitch_max = left.hip_view_kick_pitch_max;
+        k.hip_view_kick_yaw_min = left.hip_view_kick_yaw_min;
+        k.hip_view_kick_yaw_max = left.hip_view_kick_yaw_max;
+        k.hip_gun_kick_pitch_min = left.hip_gun_kick_pitch_min;
+        k.hip_gun_kick_pitch_max = left.hip_gun_kick_pitch_max;
+        k.hip_gun_kick_yaw_min = left.hip_gun_kick_yaw_min;
+        k.hip_gun_kick_yaw_max = left.hip_gun_kick_yaw_max;
+    }
+    k
+}
+
+#[cfg(test)]
+mod shock_sway_tests {
+    use super::shock_sway_scale;
+
+    #[test]
+    fn a_stunned_gun_sways_by_its_own_scale_and_eases_back() {
+        let start = shock_sway_scale(4000, 4000, 2.0);
+        let half = shock_sway_scale(2000, 4000, 2.0);
+        let done = shock_sway_scale(0, 4000, 2.0);
+        eprintln!("sway while stunned: start {start:.2} half {half:.2} done {done:.2}");
+        assert_eq!(start, 2.0);
+        assert!(half > 1.0 && half < 2.0);
+        assert_eq!(done, 1.0);
+        assert_eq!(shock_sway_scale(4000, 4000, 0.0), 1.0);
+    }
+}
+
+#[cfg(test)]
+mod dual_wield_kick_tests {
+    use super::{KickParams, dual_wield_kick};
+
+    fn gun(v: f32) -> KickParams {
+        KickParams {
+            hip_view_kick_pitch_min: v,
+            hip_view_kick_pitch_max: 2.0 * v,
+            hip_gun_kick_yaw_max: 3.0 * v,
+            ads_view_kick_pitch_max: 9.0,
+            ..KickParams::default()
+        }
+    }
+
+    #[test]
+    fn both_guns_firing_add_their_hip_kick() {
+        let both = dual_wield_kick(gun(1.0), &gun(10.0), true, true);
+        assert_eq!(both.hip_view_kick_pitch_min, 11.0);
+        assert_eq!(both.hip_view_kick_pitch_max, 22.0);
+        assert_eq!(both.hip_gun_kick_yaw_max, 33.0);
+        // Aiming down the sights keeps the right gun's own kick.
+        assert_eq!(both.ads_view_kick_pitch_max, 9.0);
+        let left_only = dual_wield_kick(gun(1.0), &gun(10.0), false, true);
+        assert_eq!(left_only.hip_view_kick_pitch_max, 20.0);
+        let right_only = dual_wield_kick(gun(1.0), &gun(10.0), true, false);
+        assert_eq!(right_only, gun(1.0));
     }
 }
 
@@ -345,7 +423,20 @@ pub fn tick_session_view_kick(
     let n = walk.map(|w| w.local_fire).unwrap_or(0);
     if n > 0 {
         let reduce_window_active = ps.weapon_restrict_kick_time > 0;
-        let params = kick_params(&facts.kick);
+        let mut params = kick_params(&facts.kick);
+        let left = reg.0.dual_wield_weapon_of(viewmodel);
+        if bo2_camera(&kick)
+            && left != 0
+            && let Some(left_facts) = reg.0.facts_of(left)
+        {
+            let firing = weapon_iw4::WeaponState::Firing as i32;
+            params = dual_wield_kick(
+                params,
+                &kick_params(&left_facts.kick),
+                ps.weaponstate_primary == firing,
+                ps.weaponstate_secondary == firing,
+            );
+        }
         for _ in 0..n {
             kick.state.seed_fire(
                 &params,
@@ -402,6 +493,19 @@ pub fn tick_session_view_kick(
     }
 
     let overlay_active = facts.overlay_reticle != 0;
+    if bo2_camera(&kick) && facts.aim_down_sight && overlay_active && ps.f_weapon_pos_frac > 0.0 {
+        kick.sway.follow_view(ps.viewangles);
+        return;
+    }
+    let shock_sway = if bo2_camera(&kick) {
+        shock_sway_scale(
+            shellshock_remaining_ms(clock.time(), ps.shellshock_time, ps.shellshock_duration),
+            ps.shellshock_duration,
+            facts.sway.sway_shell_shock_scale,
+        )
+    } else {
+        1.0
+    };
     kick.sway.advance(
         facts.sway.hip_params(),
         facts.sway.ads_params(),
@@ -409,9 +513,18 @@ pub fn tick_session_view_kick(
         ps.f_weapon_pos_frac,
         facts.aim_down_sight,
         overlay_active,
-        1.0,
+        shock_sway,
         dt,
     );
+}
+
+/// bo2zm: while stunned or shocked, a Black Ops II gun sways by its own
+/// swayShellShockScale, easing back to normal as the shock wears off.
+fn shock_sway_scale(remaining_ms: i32, duration_ms: i32, gun_scale: f32) -> f32 {
+    if gun_scale <= 0.0 {
+        return 1.0;
+    }
+    sway_shellshock_landing_scale(remaining_ms, duration_ms, gun_scale)
 }
 
 pub fn sync_camera_from_presented(
@@ -562,6 +675,7 @@ pub fn sync_camera_from_presented(
         pm_flags: ps.pm_flags,
         weapon_pos_frac: ps.f_weapon_pos_frac,
         perks0: ps.perks[0],
+        bo2: bo2_camera(&kick),
     };
     stamp_damage_feedback(
         &mut kick,
@@ -788,7 +902,7 @@ fn stamp_and_land_origin_z(
             origin[2],
             kick.last_velocity[2],
         ) {
-            let dip = crash_land_view_dip(fall);
+            let dip = crash_land_view_dip(fall, bo2_camera(kick));
             if dip > 0 {
                 kick.land_change = -(dip as f32);
                 kick.land_time = cg_time;
@@ -814,9 +928,21 @@ fn stamp_damage_feedback(
     viewangles: [f32; 3],
     cg_time: i32,
 ) {
+    // bo2zm: Black Ops' smallest hit flinch is 0.5, not 5.
+    let kick_min = if bo2_camera(kick) {
+        weapon_iw4::BG_VIEW_KICK_MIN_BO2
+    } else {
+        weapon_iw4::BG_VIEW_KICK_MIN
+    };
     let mut stamped = false;
     if kick.have_damage_prev && damage_event != kick.last_damage_event && damage_count != 0 {
-        let punch = damage_feedback_kick(damage_yaw, damage_pitch, damage_count, viewangles);
+        let punch = weapon_iw4::damage_feedback_kick_min(
+            damage_yaw,
+            damage_pitch,
+            damage_count,
+            viewangles,
+            kick_min,
+        );
         kick.v_dmg_pitch = punch.v_dmg_pitch;
         kick.v_dmg_roll = punch.v_dmg_roll;
         kick.damage_time = cg_time.max(1);
@@ -824,11 +950,12 @@ fn stamp_damage_feedback(
     }
     if !stamped && hurt.0 > 0 {
         hurt.0 -= 1;
-        let punch = damage_feedback_kick(
+        let punch = weapon_iw4::damage_feedback_kick_min(
             VIEW_DAMAGE_UNDIRECTED,
             VIEW_DAMAGE_UNDIRECTED,
             1,
             viewangles,
+            kick_min,
         );
         kick.v_dmg_pitch = punch.v_dmg_pitch;
         kick.v_dmg_roll = punch.v_dmg_roll;
@@ -836,6 +963,15 @@ fn stamp_damage_feedback(
     }
     kick.last_damage_event = damage_event;
     kick.have_damage_prev = true;
+}
+
+/// bo2zm: Black Ops II camera rules while holding a Black Ops II gun.
+/// BO2_FEEL=mw2 keeps the old camera, to compare the two.
+pub(crate) fn bo2_camera(kick: &SessionViewKick) -> bool {
+    static MW2: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    let mw2 =
+        *MW2.get_or_init(|| std::env::var("BO2_FEEL").is_ok_and(|v| v.eq_ignore_ascii_case("mw2")));
+    kick.aim_kick && !mw2
 }
 
 #[derive(Resource, Clone, Copy, Debug, Default)]
