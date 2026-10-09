@@ -199,6 +199,10 @@ pub struct WeaponBodyFacts {
     pub motion_tracker: bool,
 
     pub rifle_bullet: bool,
+    /// bo2mp: BO2's stowed gun (on his back) sits at this offset and angle
+    /// (pitch, yaw, roll in degrees) from the tag it hangs on.
+    pub stowed_offset: [f32; 3],
+    pub stowed_rotation: [f32; 3],
     pub inventory_type: i32,
     pub fire_type: i32,
     pub max_ammo: i32,
@@ -1735,6 +1739,8 @@ impl WeaponCatalog {
                 penetrate_multiplier: geometry.penetrate_multiplier,
                 motion_tracker: geometry.motion_tracker,
                 rifle_bullet: geometry.rifle_bullet,
+                stowed_offset: [0.0; 3],
+                stowed_rotation: [0.0; 3],
                 inventory_type: geometry.inventory_type,
                 fire_type: geometry.fire_type,
                 max_ammo: geometry.max_ammo,

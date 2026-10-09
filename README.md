@@ -170,6 +170,9 @@ only. Like upstream IW4L, much of this code was written by an LLM (Claude), dire
 
 ## Recent changes
 
+- 2026-10-09: a launcher on a player's back hangs slung the way Black Ops II carries it, SMG and pistol kills count
+  as the right kind of bullet (a rocket's direct hit is no longer cut by Flak Jacket), and the HUD reads the game's
+  own weapon names.
 - 2026-10-08: movement, footsteps and head bob follow Black Ops II's own rules (set BO2_FEEL=mw2 for the old
   feel); sprinting bobs the gun the way each gun does, the dive has its own rhythm, and hard landings slow you and
   take health. Prestige at level 55 (Barracks > Prestige Mode). Flashbangs and concussions last and sway your gun as
@@ -184,7 +187,8 @@ only. Like upstream IW4L, much of this code was written by an LLM (Claude), dire
 
 ## Coming soon
 
-- Every menu and HUD piece one-for-one with the original (end scoreboard).
+- The Killed By card, the blur behind your sights, names over players' heads, and Nuketown's breakable mannequins,
+  cars and clock.
 - Movement and gun-feel numbers checked side by side against the original game.
 - The Lodestar's vehicle screen.
 - Live sun shadows; ragdoll deaths.

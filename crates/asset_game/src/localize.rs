@@ -58,6 +58,15 @@ impl LocalizeCatalog {
         }
     }
 
+    /// bo2mp: a catalog of (key, text) rows (Black Ops II's English zones).
+    pub fn from_rows<'a>(rows: impl IntoIterator<Item = (&'a str, &'a str)>) -> Self {
+        let mut catalog = Self::default();
+        for (name, value) in rows {
+            catalog.insert(name, value);
+        }
+        catalog
+    }
+
     fn insert(&mut self, name: &str, value: &str) {
         if name.is_empty() {
             return;

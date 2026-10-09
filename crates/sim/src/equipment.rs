@@ -1339,6 +1339,7 @@ pub(crate) fn think_projectile(world: &mut FrameWorld, tick: Tick, entnum: i32) 
                 killcam_entity_start_time: projectile_birth_ms(&projectile),
                 inflictor_origin: Some(projectile.origin),
                 hitloc: 0,
+                blast: false,
             };
             let _ = crate::damage::apply_damage_attempt(world, tick, &intent);
         }

@@ -263,6 +263,9 @@ fn t6_body_facts(w: &asset_t6::WeaponRef) -> WeaponBodyFacts {
     };
     f.penetrate_type = w.def_i32(d::penetrateTWeaponAttachmentype);
     f.rifle_bullet = w.def_u8(d::bRifleBullet) != 0;
+    let var_vec3 = |off: usize| [w.var_f32(off), w.var_f32(off + 4), w.var_f32(off + 8)];
+    f.stowed_offset = var_vec3(v::stowedModelOffsets);
+    f.stowed_rotation = var_vec3(v::stowedModelRotations);
     f.inventory_type = match w.def_i32(d::inventoryType) {
         t @ 0..=3 => t,
         _ => 2,

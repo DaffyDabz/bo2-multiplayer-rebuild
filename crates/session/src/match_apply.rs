@@ -891,7 +891,7 @@ fn preflight_match_install(
             )));
         }
     }
-    let strings = std::mem::take(&mut prepared.strings);
+    let mut strings = std::mem::take(&mut prepared.strings);
     let kind = match match_kind(mode_selection) {
         Ok(kind) => kind,
         Err(gap) => {
@@ -911,6 +911,16 @@ fn preflight_match_install(
         }
     }
     let sources = Sources(std::mem::take(&mut prepared.scripts));
+    // bo2mp: Black Ops II's own English rows (zone/english/en_*.ff: the
+    // weapon names) for the HUD too, not only its scripts; they win over
+    // a same-named row from the host game.
+    if let Some(set) = sources.0.t6.as_ref() {
+        let mut t6 = asset_game::LocalizeCatalog::from_rows(
+            set.strings.iter().map(|(k, v)| (k.as_str(), v.as_str())),
+        );
+        t6.absorb(strings);
+        strings = t6;
+    }
     // bo2zm M3: a Black Ops II map's own compiled scripts.
     // bo2mp: a multiplayer map runs its game type (BO2MP_GAMETYPE, default
     // Team Deathmatch); its scripts only with BO2MP_SCRIPTS=1 until the

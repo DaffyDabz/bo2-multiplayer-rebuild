@@ -471,6 +471,9 @@ struct Part {
     skel: Arc<asset_model::ModelSkel>,
     materials: Vec<Option<u32>>,
     attach: Option<xmodel_runtime::Attach>,
+    /// Its root bound to the parent tag at this (rotation, offset) instead
+    /// of on it: a stowed gun at its weapon's stowed placement.
+    root_bind: Option<(Quat, Vec3)>,
 }
 
 /// Per surface, its material in the catalog (none = not drawn).
@@ -505,6 +508,7 @@ fn gun_parts(
             parent_model: p,
             tag: tag.to_owned(),
         }),
+        root_bind: None,
     }];
     for attachment in crate::anim::remote_body::world_attachments(registry, catalog, weapon) {
         out.push(Part {
@@ -514,6 +518,7 @@ fn gun_parts(
                 parent_model: base_index,
                 tag: attachment.tag.to_string(),
             }),
+            root_bind: None,
         });
     }
     out
@@ -524,7 +529,8 @@ fn build_dobj(parts: &[Part]) -> Option<xmodel_runtime::DObj> {
         .iter()
         .map(|p| Some((p.skel.pose.as_ref()?, p.attach.clone())))
         .collect::<Option<Vec<_>>>()?;
-    xmodel_runtime::DObj::build(&srcs).ok()
+    let binds: Vec<Option<(Quat, Vec3)>> = parts.iter().map(|p| p.root_bind).collect();
+    xmodel_runtime::DObj::build_with_root_binds(&srcs, &binds).ok()
 }
 
 fn skin_all(dobj: &xmodel_runtime::DObj, parts: &[Part], world: &[Mat4]) -> Vec<Arc<PosedVerts>> {
@@ -967,6 +973,7 @@ fn collect_t6_bodies(
             skel: entry.skel.clone(),
             materials: materials_of!(entry.material_edges),
             attach: None,
+            root_bind: None,
         }];
         let mut left_hand_model = false;
         for extra in names {
@@ -978,6 +985,16 @@ fn collect_t6_bodies(
                 if let (Ok(w), Some(registry), Some(catalog)) = (index.parse::<u32>(), registry, catalog) {
                     let base = parts.len();
                     parts.extend(gun_parts(registry, catalog, w, Some((0, tag)), base));
+                    // BO2 hangs it at the weapon's own stowed offset and
+                    // angle (a launcher slung across his back), not
+                    // square on the tag.
+                    if let (Some(gun), Some(f)) = (parts.get_mut(base), registry.facts_of(w)) {
+                        let q = asset_model::angles_quat(f.stowed_rotation);
+                        gun.root_bind = Some((
+                            Quat::from_array(q).normalize(),
+                            Vec3::from_array(f.stowed_offset),
+                        ));
+                    }
                 }
                 continue;
             }
@@ -1013,6 +1030,7 @@ fn collect_t6_bodies(
                     parent_model: 0,
                     tag,
                 }),
+                root_bind: None,
             });
         }
         // The gun in his right hand (a corpse dropped his), and a dual-wield

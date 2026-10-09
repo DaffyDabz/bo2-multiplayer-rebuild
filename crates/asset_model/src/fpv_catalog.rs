@@ -600,7 +600,8 @@ pub struct FpvMountOffset {
 
 /// IW angles (pitch, yaw, roll, degrees) as a rotation: yaw about z, then
 /// pitch about y, then roll about x.
-fn angles_quat(angles: [f32; 3]) -> [f32; 4] {
+/// BO2's (pitch, yaw, roll) degrees as a rotation (x, y, z, w).
+pub fn angles_quat(angles: [f32; 3]) -> [f32; 4] {
     let [pitch, yaw, roll] = angles.map(f32::to_radians);
     let q = bevy::math::Quat::from_rotation_z(yaw)
         * bevy::math::Quat::from_rotation_y(pitch)

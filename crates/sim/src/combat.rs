@@ -1234,6 +1234,7 @@ pub(crate) fn phase_trace(
                         killcam_entity_start_time: 0,
                         inflictor_origin: None,
                         hitloc,
+                        blast: false,
                     };
                     fatal = matches!(
                         crate::damage::apply_damage_attempt(world, tick, &attempt),
@@ -1519,6 +1520,7 @@ fn fire_weapon_melee(
                     killcam_entity_start_time: 0,
                     inflictor_origin: Some(origin),
                     hitloc,
+                    blast: false,
                 };
                 let _ = crate::damage::apply_damage_attempt(world, tick, &attempt);
                 world.push_entity_event(

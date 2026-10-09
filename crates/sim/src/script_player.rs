@@ -136,7 +136,7 @@ fn means_of_death(world: &FrameWorld, intent: &DamageAttempt) -> &'static str {
         intent.source,
         intent.weapon,
         intent.hitloc,
-        intent.inflictor_origin.is_some(),
+        intent.blast,
     )
 }
 
@@ -152,12 +152,12 @@ pub(crate) fn means(
     match source {
         DamageSource::Melee => "MOD_MELEE",
         DamageSource::Shot(_) if hud_iw4::obituary_is_headshot(hitloc) => "MOD_HEAD_SHOT",
-        DamageSource::Shot(_)
-            if facts.is_some_and(|f| f.weap_class == weapon_iw4::WEAPCLASS_PISTOL) =>
-        {
-            "MOD_PISTOL_BULLET"
+        // The weapon's own rifle-bullet flag picks the bullet kind: SMGs and
+        // pistols fire pistol bullets, rifles, LMGs and snipers rifle bullets.
+        DamageSource::Shot(_) if world.bullet_pen_facts_for(weapon).rifle_bullet => {
+            "MOD_RIFLE_BULLET"
         }
-        DamageSource::Shot(_) => "MOD_RIFLE_BULLET",
+        DamageSource::Shot(_) => "MOD_PISTOL_BULLET",
         DamageSource::Projectile(_) if splash && grenade => "MOD_GRENADE_SPLASH",
         DamageSource::Projectile(_) if splash => "MOD_PROJECTILE_SPLASH",
         DamageSource::Projectile(_) if grenade => "MOD_GRENADE",
@@ -186,9 +186,8 @@ pub(crate) fn damage(
         .inflictor_origin
         .or_else(|| world.player(intent.attacker).map(|ps| ps.origin))
         .unwrap_or(victim_origin);
-    let splash = matches!(intent.source, DamageSource::Radius(_))
-        || (matches!(intent.source, DamageSource::Projectile(_))
-            && intent.inflictor_origin.is_some());
+    // A direct hit by a rocket or bolt is not radius damage; its blast is.
+    let splash = matches!(intent.source, DamageSource::Radius(_)) || intent.blast;
     let hit = Hit {
         victim: intent.target,
         attacker: Some(intent.attacker),

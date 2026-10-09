@@ -28,6 +28,9 @@ pub struct DamageAttempt {
     pub inflictor_origin: Option<[f32; 3]>,
 
     pub hitloc: u8,
+    /// An explosion's blast (radius damage), not a direct hit by the
+    /// missile or bolt itself.
+    pub blast: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -318,6 +321,7 @@ fn radius_player_attempts(world: &FrameWorld, blast: &ExplosionBlast) -> Vec<Dam
             killcam_entity_start_time: blast.killcam_entity_start_time,
             inflictor_origin: Some(blast.origin),
             hitloc: 0,
+            blast: true,
         });
     }
     intents
