@@ -45,3 +45,13 @@ pub fn surface_hidden(part_bits: &[u32; 6], hide: &[u32; 6], bone_base: u32) -> 
     or_shift_part_bits(&mut lifted, *part_bits, bone_base);
     lifted.iter().zip(hide.iter()).any(|(a, b)| a & b != 0)
 }
+
+/// bo2mp: Black Ops II's rule: a surface is dropped only when every bone it
+/// is skinned to is hidden (its part bits less the hidden ones are empty).
+/// A partly hidden rigid surface keeps its other bones' vertex lists.
+#[must_use]
+pub fn surface_hidden_whole(part_bits: &[u32; 6], hide: &[u32; 6], bone_base: u32) -> bool {
+    let mut lifted = [0u32; 6];
+    or_shift_part_bits(&mut lifted, *part_bits, bone_base);
+    lifted.iter().any(|a| *a != 0) && lifted.iter().zip(hide.iter()).all(|(a, b)| a & !b == 0)
+}

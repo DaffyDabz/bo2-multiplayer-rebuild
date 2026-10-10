@@ -70,16 +70,15 @@ pub fn bo2_fall_damage(ps: &PlayerState, pml: &Pml, fall_height: f32, feel: Bo2F
             DIVE_FALL_DAMAGE_MAX_HEIGHT,
         );
     }
-    let perk = feel.fall_damage_perk != 0 && (ps.perks[0] & feel.fall_damage_perk) != 0;
-    if feel.zombies {
-        if ps.gravity < feel.gravity {
-            damage = 0;
-        }
-        if perk && damage > 0 {
-            damage = 1;
-        }
-    } else if perk {
+    let has = |perk: u32| perk != 0 && (ps.perks[0] & perk) != 0;
+    if feel.zombies && ps.gravity < feel.gravity {
         damage = 0;
+    }
+    if has(feel.fall_damage_perk) {
+        damage = 0;
+    }
+    if feel.zombies && has(feel.flak_jacket_perk) && damage > 0 {
+        damage = 1;
     }
     // A no-damage floor, or a dead player.
     if (pml.ground_trace[4] & 1) != 0 || ps.pm_type >= 8 {
@@ -168,14 +167,14 @@ mod bo2_tests {
         sprint_strafe_speed_scale: 0.667,
         jump_slowdown: true,
         fall_damage_min_height: 128.0,
-        fall_damage_max_height: 350.0,
+        fall_damage_max_height: 300.0,
         zombies: true,
         gravity: 800,
         fall_damage_perk: 0x40,
+        flak_jacket_perk: 0x80,
         ..Bo2Feel::IW4
     };
     const MP: Bo2Feel = Bo2Feel {
-        fall_damage_max_height: 300.0,
         zombies: false,
         ..ZM
     };
@@ -217,13 +216,12 @@ mod bo2_tests {
 
     #[test]
     fn a_fall_that_hurts_slows_you_down_in_bo2() {
-        // Zombies: 128 to 350 units. 200 = 32 damage, 1620 ms at 0.2 speed.
+        // Both modes: 128 to 300 units. 200 = 41 damage, 1935 ms at 0.2 speed.
         let ps = land(200.0, ZM, |_| {});
-        assert_eq!(pain(&ps), Some(32));
-        assert_eq!(ps.pm_time, 1620);
+        assert_eq!(pain(&ps), Some(41));
+        assert_eq!(ps.pm_time, 1935);
         assert!(ps.pm_flags & 0x80 != 0);
         assert!((ps.velocity[0] - 20.0).abs() < 1e-3);
-        // Multiplayer: 128 to 300 units.
         assert_eq!(pain(&land(200.0, MP, |_| {})), Some(41));
     }
 
@@ -237,18 +235,27 @@ mod bo2_tests {
 
     #[test]
     fn short_falls_do_not_hurt() {
-        assert_eq!(pain(&land(130.0, ZM, |_| {})), None);
+        assert_eq!(pain(&land(120.0, ZM, |_| {})), None);
     }
 
     #[test]
-    fn the_fall_perk_in_zombies_and_multiplayer() {
+    fn the_fall_perk_stops_fall_damage_in_both_modes() {
         let perk = |ps: &mut PlayerState| ps.perks[0] = 0x40;
+        assert_eq!(pain(&land(300.0, ZM, perk)), None);
+        assert_eq!(pain(&land(300.0, MP, perk)), None);
+    }
+
+    #[test]
+    fn phd_flopper_turns_zombies_fall_damage_into_1() {
+        let flopper = |ps: &mut PlayerState| ps.perks[0] = 0x80;
         // Zombies: 1 damage and a short stun.
-        let ps = land(300.0, ZM, perk);
+        let ps = land(300.0, ZM, flopper);
         assert_eq!(pain(&ps), Some(1));
         assert_eq!(ps.pm_time, 535);
-        // Multiplayer: no damage.
-        assert_eq!(pain(&land(300.0, MP, perk)), None);
+        // A fall too short to hurt stays harmless.
+        assert_eq!(pain(&land(120.0, ZM, flopper)), None);
+        // Multiplayer's Flak Jacket leaves falls alone.
+        assert_eq!(pain(&land(300.0, MP, flopper)), Some(100));
     }
 
     #[test]

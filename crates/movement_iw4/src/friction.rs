@@ -38,6 +38,10 @@ pub fn friction(ps: &mut PlayerState, pml: &Pml, bo2: bool) {
             drop = control * 5.5;
             drop = drop * pml.frametime + 0.0;
         }
+        // bo2zm: slick ground still slows you in Black Ops II.
+        if bo2 && (pml.ground_trace[4] & 2) != 0 {
+            drop += crate::feel::SLIDING_FRICTION * speed * pml.frametime;
+        }
     } else {
         drop = (speed / (ps.melee_charge_time as f32 * 0.001)) * pml.frametime;
     }

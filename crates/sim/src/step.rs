@@ -356,7 +356,13 @@ fn run_players_system(ecs: &mut World) {
                 world
                     .client_meta(*id)
                     .and_then(|m| m.shellshock.as_ref())
-                    .is_some_and(|shock| shock.movement),
+                    .map_or(1.0, |shock| {
+                        movement_iw4::shellshock_walk_scale(
+                            shock.movement,
+                            shock.movement_scale,
+                            feel,
+                        )
+                    }),
                 feel,
             );
             // bo2mp: the Hybrid Optic's swap key is the sprint key; tapping it while aimed
@@ -2104,28 +2110,24 @@ fn bo2_feel_from(t6: &crate::t6::T6Runtime) -> movement_iw4::Bo2Feel {
     movement_iw4::Bo2Feel {
         on: true,
         sprint_strafe_speed_scale: number("player_sprintStrafeSpeedScale", 0.667),
-        jump_slowdown: number("jump_slowdownEnable", 1.0) != 0.0,
-        // Zombies has its own fall heights; multiplayer reads the dvars.
-        fall_damage_min_height: if zombies {
-            128.0
-        } else {
-            number("bg_fallDamageMinHeight", 128.0)
-        },
-        fall_damage_max_height: if zombies {
-            350.0
-        } else {
-            number("bg_fallDamageMaxHeight", 300.0)
-        },
+        // BO2 turns the repeated-jump slowdown off in Zombies and on in
+        // multiplayer, unless a script sets the dvar.
+        jump_slowdown: number("jump_slowdownEnable", if zombies { 0.0 } else { 1.0 }) != 0.0,
+        // Both modes read the same fall heights.
+        fall_damage_min_height: number("bg_fallDamageMinHeight", 128.0),
+        fall_damage_max_height: number("bg_fallDamageMaxHeight", 300.0),
         zombies,
         gravity: number("bg_gravity", 800.0) as i32,
-        // Multiplayer's fall perk; Zombies' PhD Flopper has no bit yet.
-        fall_damage_perk: if zombies {
-            0
-        } else {
-            movement_iw4::PERK_FALLHEIGHT
-        },
+        // The fall perk works in both modes (Turned's zombies get it);
+        // Flak Jacket only changes falls in Zombies, where it is PhD Flopper.
+        fall_damage_perk: movement_iw4::PERK_FALLHEIGHT,
+        flak_jacket_perk: movement_iw4::PERK_FLAKJACKET,
         fast_ads_perk: movement_iw4::PERK_FASTADS,
         fast_ads_multiplier: number("perk_weapAdsMultiplier", 0.5),
+        // Stamin-Up: sprint time x perk_sprintMultiplier, and in Zombies a
+        // sprint at least 1.1 times the gun's speed.
+        longer_sprint_perk: movement_iw4::PERK_LONGERSPRINT,
+        sprint_multiplier: number("perk_sprintMultiplier", 2.0),
         // dtp: BO2's dive to prone switch, on in both modes.
         dive: number("dtp", 1.0) != 0.0,
         // Set per player from the gun in hand.
@@ -2153,7 +2155,7 @@ fn pmove_context(
     melee_delay_ms: i32,
     melee_charge_delay_ms: i32,
     overlay_reticle: i32,
-    shellshock_affects_movement: bool,
+    shellshock_movement_scale: f32,
     feel: movement_iw4::Bo2Feel,
 ) -> PmoveSingleContext {
     let player_sprint_time = 4.0_f32;
@@ -2174,7 +2176,7 @@ fn pmove_context(
                 weapon_move_speed_scale: weapon_scales.0,
                 weapon_ads_move_speed_scale: weapon_scales.1,
 
-                shellshock_affects_movement,
+                shellshock_movement_scale,
             },
             weapon_move_scale: 1.0,
             old_buttons,

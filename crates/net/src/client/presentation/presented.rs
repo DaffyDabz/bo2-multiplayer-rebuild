@@ -331,6 +331,17 @@ impl PresentedSnapshot {
         {
             return None;
         }
+        // bo2mp: his view rides a scorestreak (the Lodestar's drone): his own
+        // gun is not drawn there, though he still aims it.
+        if self.snapshot().is_some_and(|snapshot| {
+            snapshot
+                .meta
+                .script_dvars(id)
+                .string("bo2mp_vehicle_view")
+                .is_some_and(|v| !v.is_empty())
+        }) {
+            return None;
+        }
         let ps = self.player(id)?;
         playerstate_iw4::viewweapon_frame_runs(ps.pm_type).then_some(ps)
     }

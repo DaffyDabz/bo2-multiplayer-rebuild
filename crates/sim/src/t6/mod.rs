@@ -235,6 +235,10 @@ pub(crate) struct Player {
     pub last_weapon: u32,
     pub last_wstate: i32,
     pub last_clip: i32,
+    /// Whether he was diving / sprinting last tick (`dtp_start` /
+    /// `dtp_end`, `sprint_begin` / `sprint_end`).
+    pub last_dive: bool,
+    pub last_sprint: bool,
     /// His scoreboard counts the engine keeps (headshots, downs, revives...).
     pub stats: BTreeMap<String, i32>,
     /// His HUD's client fields that are set (perks, power-ups), in the
@@ -268,6 +272,8 @@ impl Player {
             last_weapon: 0,
             last_wstate: 0,
             last_clip: 0,
+            last_dive: false,
+            last_sprint: false,
             stats: Default::default(),
             hud_fields: Vec::new(),
             camera: None,
@@ -956,6 +962,7 @@ fn advance_inner(world: &mut World) {
     if world.resource::<Zm>().mp {
         playeranim::advance(world);
     }
+    players::movement_events(world);
     if !world.resource::<Zm>().debris_paths_cut {
         brushes::cut_debris_paths(world);
     }

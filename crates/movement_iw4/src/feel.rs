@@ -12,26 +12,31 @@ pub struct Bo2Feel {
     /// sprinting.
     pub sprint_strafe_speed_scale: f32,
 
-    /// jump_slowdownEnable: landing a jump slows you down.
+    /// jump_slowdownEnable: landing a jump slows you down (BO2: on in
+    /// multiplayer, off in Zombies).
     pub jump_slowdown: bool,
 
-    /// Falls higher than this hurt (bg_fallDamageMinHeight; Zombies 128).
+    /// Falls higher than this hurt (bg_fallDamageMinHeight, 128 in both modes).
     pub fall_damage_min_height: f32,
 
-    /// Falls this high or higher do full damage (bg_fallDamageMaxHeight;
-    /// Zombies 350).
+    /// Falls this high or higher do full damage (bg_fallDamageMaxHeight, 300
+    /// in both modes).
     pub fall_damage_max_height: f32,
 
-    /// Zombies: no fall damage while this player's gravity is low, and the
-    /// fall perk turns any fall damage into 1.
+    /// Zombies: no fall damage while this player's gravity is low, and PhD
+    /// Flopper turns any fall damage into 1.
     pub zombies: bool,
 
     /// bg_gravity, for the Zombies low-gravity rule.
     pub gravity: i32,
 
-    /// The fall perk's bit in perks[0] (Zombies: PhD Flopper, damage becomes
-    /// 1; multiplayer: no fall damage). 0 = not given out yet.
+    /// The fall perk's bit in perks[0] (specialty_fallheight): no fall
+    /// damage, in both modes. 0 = none.
     pub fall_damage_perk: u32,
+
+    /// PhD Flopper's bit in perks[0] (specialty_flakjacket): in Zombies any
+    /// fall damage becomes 1, so the scripts can set off its blast. 0 = none.
+    pub flak_jacket_perk: u32,
 
     /// Quickdraw's bit in perks[0] (specialty_fastads). 0 = none.
     pub fast_ads_perk: u32,
@@ -40,6 +45,13 @@ pub struct Bo2Feel {
     /// share of the gun's own time (0.5 until read from real BO2); sniper rifles
     /// are left alone.
     pub fast_ads_multiplier: f32,
+
+    /// Stamin-Up's bit in perks[0] (specialty_longersprint). 0 = none.
+    pub longer_sprint_perk: u32,
+
+    /// perk_sprintMultiplier: Stamin-Up multiplies the sprint time by this
+    /// (BO2 default 2, still capped at 16383 ms).
+    pub sprint_multiplier: f32,
 
     /// dtp: dive to prone is allowed (BO2 default 1, in both modes).
     pub dive: bool,
@@ -74,8 +86,11 @@ impl Bo2Feel {
         zombies: false,
         gravity: 800,
         fall_damage_perk: 0,
+        flak_jacket_perk: 0,
         fast_ads_perk: 0,
         fast_ads_multiplier: 1.0,
+        longer_sprint_perk: 0,
+        sprint_multiplier: 1.0,
         dive: true,
         sprint_cycle_scale: 1.0,
         ducked_sprint_cycle_scale: 1.0,
@@ -117,11 +132,78 @@ pub fn omni_cmd_scale(
     }
 }
 
-/// Fall perk (specialty_fallheight) in multiplayer.
+/// BO2 feel M14: a shellshock slows walking by the shock file's own number
+/// (bg_shock_movement: explosion and pain 1, so not slowed; flashbang 0.8;
+/// most others 0.4). The old rule slowed every shock with a non-zero
+/// number to 0.4. `movement` is the file's switch; a host that puts the
+/// number on the move-speed multiplier itself (bo2mp's `shellshock`)
+/// turns it off, so the shock never slows twice.
+#[must_use]
+pub fn shellshock_walk_scale(movement: bool, movement_scale: f32, feel: Bo2Feel) -> f32 {
+    if !movement {
+        1.0
+    } else if !feel.on {
+        0.4
+    } else if movement_scale > 0.0 {
+        movement_scale
+    } else {
+        1.0
+    }
+}
+
+/// Fall perk (specialty_fallheight).
 pub const PERK_FALLHEIGHT: u32 = 1 << 29;
+
+/// Flak Jacket, Zombies' PhD Flopper (specialty_flakjacket).
+pub const PERK_FLAKJACKET: u32 = 1 << 31;
 
 /// Quickdraw (specialty_fastads).
 pub const PERK_FASTADS: u32 = 1 << 30;
+
+/// Stamin-Up, multiplayer's Extreme Conditioning (specialty_longersprint).
+pub const PERK_LONGERSPRINT: u32 = 1 << 26;
+
+/// In Zombies, Stamin-Up raises the gun's move speed to at least this while
+/// sprinting (BO2's own number).
+pub const STAMIN_UP_SPRINT_MOVE_SPEED_SCALE: f32 = 1.1;
+
+fn stamin_up(ps: &PlayerState, feel: Bo2Feel) -> bool {
+    feel.on && feel.longer_sprint_perk != 0 && (ps.perks[0] & feel.longer_sprint_perk) != 0
+}
+
+/// BO2 feel M13: Stamin-Up multiplies the sprint time, capped at 16383 ms.
+#[must_use]
+pub fn stamin_up_sprint_time(ps: &PlayerState, max_ms: i32, feel: Bo2Feel) -> i32 {
+    if !stamin_up(ps, feel) {
+        return max_ms;
+    }
+    ((max_ms as f32 * feel.sprint_multiplier) as i32).min(0x3fff)
+}
+
+/// BO2 feel M13: in Zombies, Stamin-Up sprints with the gun's move speed at
+/// least 1.1 (most guns are 1, so 10% faster). A gun with no move speed of
+/// its own keeps its aiming speed.
+#[must_use]
+pub fn stamin_up_cmd_scale(
+    ps: &PlayerState,
+    scale: crate::CmdScaleWalkContext,
+    feel: Bo2Feel,
+) -> crate::CmdScaleWalkContext {
+    if feel.zombies
+        && stamin_up(ps, feel)
+        && ps.pm_flags & pm_flags::SPRINTING != 0
+        && scale.weapon_move_speed_scale > 0.0
+    {
+        crate::CmdScaleWalkContext {
+            weapon_move_speed_scale: scale
+                .weapon_move_speed_scale
+                .max(STAMIN_UP_SPRINT_MOVE_SPEED_SCALE),
+            ..scale
+        }
+    } else {
+        scale
+    }
+}
 
 /// BO2 feel G3h: Quickdraw speeds up aiming in and out, except on sniper
 /// rifles. Returns the aim-in and aim-out rates (per ms).
@@ -185,6 +267,13 @@ pub const JUMP_LAND_RAISE: f32 = 18.0;
 /// Ground friction scale during the hard-landing stun.
 pub const HARD_LANDING_FRICTION_SCALE: f32 = 0.3;
 
+/// Walking acceleration on slick ground (the old rule had 1).
+pub const SLICK_ACCEL: f32 = 2.0;
+
+/// player_sliding_friction: slick ground still slows you, this much times
+/// your speed each second.
+pub const SLIDING_FRICTION: f32 = 1.5;
+
 /// Head bob and footstep rhythm per stance: stand, prone, crouch, then the
 /// same three running backwards. Columns: running, walking.
 const BOB_FACTOR_TABLE: [[f32; 2]; 6] = [
@@ -225,6 +314,7 @@ pub(crate) fn bob_cycle(
     scales: crate::CmdScaleWalkContext,
     feel: Bo2Feel,
 ) {
+    let scales = stamin_up_cmd_scale(ps, scales, feel);
     // Downed (22) uses the prone row.
     let stance = match ps.view_height_target {
         22 | 11 => 1,
@@ -361,7 +451,7 @@ mod tests {
             player_last_stand_crawl_speed_scale: 0.15,
             weapon_move_speed_scale: 1.0,
             weapon_ads_move_speed_scale: 1.0,
-            shellshock_affects_movement: false,
+            shellshock_movement_scale: 1.0,
         }
     }
 

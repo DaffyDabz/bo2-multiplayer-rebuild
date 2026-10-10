@@ -21,21 +21,7 @@ pub fn air_move<C: CollisionBackend>(
 ) {
     friction(ps, pml, false);
 
-    let command_scale = cmd_scale(ps, cmd, context.player_spectate_speed_scale);
-    let mut forward = pml.forward;
-    let mut right = pml.right;
-    forward[2] = 0.0;
-    right[2] = 0.0;
-    normalize(&mut forward);
-    normalize(&mut right);
-
-    let mut wishdir = [
-        (cmd.rightmove as f32) * right[0] + (cmd.forwardmove as f32) * forward[0],
-        (cmd.rightmove as f32) * right[1] + (cmd.forwardmove as f32) * forward[1],
-        (cmd.rightmove as f32) * right[2] + (cmd.forwardmove as f32) * forward[2],
-    ];
-    let wishspeed = normalize(&mut wishdir);
-    accelerate(ps, pml, &wishdir, wishspeed * command_scale, 1.0);
+    steer(ps, pml, cmd, context.player_spectate_speed_scale);
 
     if pml.ground_plane != 0 {
         let velocity = ps.velocity;
@@ -62,6 +48,26 @@ pub fn air_move<C: CollisionBackend>(
     );
 }
 
+/// The player's own push in the air: wish speed from the keys or stick,
+/// air acceleration 1. Also steers a dive (bo2zm).
+pub(crate) fn steer(ps: &mut PlayerState, pml: &Pml, cmd: &UserCmd, spectate_speed_scale: f32) {
+    let command_scale = cmd_scale(ps, cmd, spectate_speed_scale);
+    let mut forward = pml.forward;
+    let mut right = pml.right;
+    forward[2] = 0.0;
+    right[2] = 0.0;
+    normalize(&mut forward);
+    normalize(&mut right);
+
+    let mut wishdir = [
+        (cmd.rightmove as f32) * right[0] + (cmd.forwardmove as f32) * forward[0],
+        (cmd.rightmove as f32) * right[1] + (cmd.forwardmove as f32) * forward[1],
+        (cmd.rightmove as f32) * right[2] + (cmd.forwardmove as f32) * forward[2],
+    ];
+    let wishspeed = normalize(&mut wishdir);
+    accelerate(ps, pml, &wishdir, wishspeed * command_scale, 1.0);
+}
+
 fn cmd_scale(ps: &PlayerState, cmd: &UserCmd, spectate_speed_scale: f32) -> f32 {
     let forward = cmd.forwardmove as f32;
     let right = cmd.rightmove as f32;
@@ -78,7 +84,8 @@ fn cmd_scale(ps: &PlayerState, cmd: &UserCmd, spectate_speed_scale: f32) -> f32 
     }
 
     let mut scale = (ps.speed as f32 * largest) / (magnitude * 127.0_f32);
-    if (ps.pm_flags & 0x40) != 0 || ps.leanf != 0.0 {
+    // bo2zm: a dive steers at the same 0.4 as a slow walk.
+    if (ps.pm_flags & 0x40) != 0 || ps.leanf != 0.0 || crate::dive::active(ps) {
         scale *= 0.4_f32;
     }
     scale *= match ps.pm_type {

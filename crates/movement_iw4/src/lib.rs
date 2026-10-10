@@ -48,7 +48,7 @@ pub use dmgtimer::{
     PLAYER_DMGTIMER_MIN_SCALE, PLAYER_DMGTIMER_STUMBLE_TIME_MS, PLAYER_DMGTIMER_TIME_PER_POINT,
     damage_scale_walk, damage_window_open, update_damage_timer, walk_move_drop_damage_timer,
 };
-pub use dive::{PMF_DIVE, PMF_DIVE_GETUP, PMF_DIVE_PRONE, PMF_DIVE_SLIDE}; // bo2zm
+pub use dive::{PMF_DIVE, PMF_DIVE_GETUP, PMF_DIVE_PRONE, PMF_DIVE_SLIDE, dive_to_prone}; // bo2zm
 pub use drop_timers::drop_timers;
 pub use events::{SequencedPlayerEvent, add_event, add_predictable_event, consume_player_events};
 pub use footstep::{
@@ -57,7 +57,10 @@ pub use footstep::{
     get_bob_max_speed, ladder_footsteps, should_make_footsteps, surface_type_index,
     surface_type_name, surface_type_to_name,
 };
-pub use feel::{Bo2Feel, PERK_FALLHEIGHT, PERK_FASTADS, quickdraw_ads_rates}; // bo2zm
+pub use feel::{
+    Bo2Feel, PERK_FALLHEIGHT, PERK_FASTADS, PERK_FLAKJACKET, PERK_LONGERSPRINT, quickdraw_ads_rates,
+    shellshock_walk_scale,
+}; // bo2zm
 pub use friction::friction;
 pub use ground::complete_ground_trace;
 pub use integrate::predict_integrate;

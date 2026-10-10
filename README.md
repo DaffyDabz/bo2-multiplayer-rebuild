@@ -170,6 +170,10 @@ only. Like upstream IW4L, much of this code was written by an LLM (Claude), dire
 
 ## Recent changes
 
+- 2026-10-09: movement from the original game's own numbers: a dive needs a short sprint first, waits about
+  1.5 s after the last one, pops higher and can be steered a little; falls hurt from the original heights and the
+  fall-damage perk stops it; a shellshock slows your walk by the shock's own amount. The Lodestar's view snaps to
+  its zoom when you aim, and your gun stays quiet while a scorestreak's view is up.
 - 2026-10-09: the Lodestar puts your view on the drone with the game's own Lodestar screen (thermal at the
   start, mouse wheel up switches thermal and normal, left mouse fires missiles onto your laser, hold F to leave),
   the Killed By card shows and stays up while you are dead, bodies fall as ragdolls (the killcam replays them), the
@@ -196,7 +200,8 @@ only. Like upstream IW4L, much of this code was written by an LLM (Claude), dire
 ## Coming soon
 
 - Nuketown's mannequins and clock break when shot.
-- The Lodestar's zoom; the Hellstorm's steer prompt key.
+- The Hellstorm's steer prompt key.
+- A no-graphics test mode, so many test matches can run at once.
 - Movement and gun-feel numbers checked side by side against the original game.
 - Live sun shadows; blood on hits as the original shows it.
 - More per-map test runs to fill in the mechanics bars; visual comparison shots for each map.

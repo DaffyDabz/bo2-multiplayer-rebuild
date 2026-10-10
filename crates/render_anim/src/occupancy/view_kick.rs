@@ -625,15 +625,37 @@ pub fn sync_camera_from_presented(
             transform.translation = eye.translation;
             transform.rotation = eye.rotation;
         }
-        // Its own field of view (the RC-XD's 90), else his.
-        if vehicle.fov > 0.0 {
-            let vertical = horizontal_to_vertical_fov_deg(vehicle.fov).to_radians();
+        // Its own field of view (the RC-XD's 90); a view linked to the gun
+        // in his hands (the Lodestar's) zooms with it; else his.
+        let held = ps.weapon;
+        let linked = linked_weapon_view_fov(
+            ps.link_flags,
+            held,
+            ps.f_weapon_pos_frac,
+            weapons
+                .as_ref()
+                .and_then(|w| w.0.facts_of(held))
+                .filter(|f| f.body_resolved)
+                .map_or(0.0, |f| f.ads_zoom_fov),
+        );
+        let fov = if vehicle.fov > 0.0 {
+            Some(vehicle.fov)
+        } else {
+            linked
+        };
+        if let Some(fov) = fov {
+            if linked.is_some()
+                && let Some(actions) = actions.as_deref_mut()
+            {
+                actions.fov_scale = zoom_sensitivity(fov) * actions.shellshock_look_scale;
+            }
+            let vertical = horizontal_to_vertical_fov_deg(fov).to_radians();
             for mut projection in lenses.iter_mut() {
                 if let Projection::Perspective(perspective) = &mut *projection {
                     perspective.fov = vertical;
                 }
             }
-            kick.horiz_fov_deg = vehicle.fov;
+            kick.horiz_fov_deg = fov;
         }
         return;
     }
@@ -834,6 +856,29 @@ pub fn sync_camera_from_presented(
     }
 }
 
+/// BO2's fixed field of view for a view linked to the gun in his hands.
+const LINKED_WEAPON_VIEW_FOV: f32 = 45.0;
+
+/// BO2: a view linked to the gun in his hands (`playerlinkweaponviewtodelta`,
+/// link flag 4; the Lodestar's drone view) is a fixed 45 degrees, and the
+/// gun's own ADS zoom (the Lodestar's 10) as soon as he starts to aim: no
+/// blend, no fov scale. None when the view is not linked to a gun.
+fn linked_weapon_view_fov(
+    link_flags: u32,
+    weapon: u32,
+    f_weapon_pos_frac: f32,
+    ads_zoom_fov: f32,
+) -> Option<f32> {
+    if (link_flags & hud_iw4::LINK_FLAGS_FORCE_ADS_ZOOM_FOV) == 0 || weapon == 0 {
+        return None;
+    }
+    Some(if f_weapon_pos_frac > 0.0 && ads_zoom_fov > 0.0 {
+        ads_zoom_fov
+    } else {
+        LINKED_WEAPON_VIEW_FOV
+    })
+}
+
 fn apply_fpv_lens_fov(
     lenses: &mut Query<&mut Projection, With<FpvLens>>,
     base_fov: f32,
@@ -1029,6 +1074,24 @@ fn earthquake_pose(
         }
     }
     pose
+}
+
+#[cfg(test)]
+mod linked_weapon_view_tests {
+    use super::linked_weapon_view_fov;
+
+    #[test]
+    fn the_lodestar_view_snaps_to_its_zoom_when_he_aims() {
+        // Not linked to a gun: his own view.
+        assert_eq!(linked_weapon_view_fov(0, 233, 1.0, 10.0), None);
+        assert_eq!(linked_weapon_view_fov(4, 0, 1.0, 10.0), None);
+        // Linked: 45 at rest, the gun's 10 from the first bit of aim.
+        assert_eq!(linked_weapon_view_fov(4, 233, 0.0, 10.0), Some(45.0));
+        assert_eq!(linked_weapon_view_fov(4 | 1, 233, 0.01, 10.0), Some(10.0));
+        assert_eq!(linked_weapon_view_fov(4, 233, 1.0, 10.0), Some(10.0));
+        // A gun with no ADS zoom stays at 45.
+        assert_eq!(linked_weapon_view_fov(4, 233, 1.0, 0.0), Some(45.0));
+    }
 }
 
 #[cfg(test)]

@@ -189,6 +189,16 @@ fn update_hide_parts(dobj: &mut AuthorityDObjState) {
         .definition
         .hide_parts(&state.health, &cap.pose.bone_names);
     if hide != dobj.semantic_state.hide_part_bits {
+        if std::env::var_os("IW4L_T6_HITLOG").is_some() {
+            diag::info!(
+                Sim,
+                "bo2mp destructible {} hides {:08x?} (bones {:?}, health {:?})",
+                state.definition.name,
+                hide.words(),
+                cap.pose.bone_names,
+                state.health
+            );
+        }
         dobj.semantic_state.hide_part_bits = hide;
         dobj.pose_request.hide_part_bits = hide;
         dobj.pose_revision = dobj.pose_revision.wrapping_add(1);
@@ -388,6 +398,20 @@ pub(crate) fn apply_damage(
         DamageKind::Script => 1.0,
     };
     let damage = (amount as f32 * scale) as i32;
+    if std::env::var_os("IW4L_T6_HITLOG").is_some() {
+        let tag = bone
+            .zip(dobj.capability.as_ref())
+            .and_then(|(b, cap)| cap.pose.bone_names.get(usize::from(b)).cloned());
+        let shows: Vec<_> = piece.stages.iter().map(|s| s.show_bone.clone()).collect();
+        diag::info!(
+            Sim,
+            "bo2mp destructible {} hit on {tag:?}: piece {index} of {} (stages show {shows:?}) \
+             takes {damage} ({kind:?} x{scale}), health {:?}",
+            state.definition.name,
+            state.definition.pieces.len(),
+            state.health
+        );
+    }
     let mut out = Outcome::default();
     state.damage(index, damage, None, 0, &mut out);
     publish(world, tick, owner, out, attacker, weapon);

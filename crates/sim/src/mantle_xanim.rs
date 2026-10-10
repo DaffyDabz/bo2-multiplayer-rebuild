@@ -24,7 +24,8 @@ pub const MANTLE_XANIM_NAMES_T6: [&str; MANTLE_XANIM_TREE_SIZE] = [
 
 /// `perk_mantleReduction`: with `specialty_fastmantle` BO2 plays the same climb
 /// with its climb-up part scaled by this (the vault over keeps its length).
-pub const PERK_MANTLE_REDUCTION_DEFAULT: f32 = 0.5;
+/// BO2's default, 0.4: the climb up takes 40% of its time.
+pub const PERK_MANTLE_REDUCTION_DEFAULT: f32 = 0.4;
 
 #[derive(Clone, Debug)]
 struct Leaf {
@@ -183,7 +184,7 @@ mod tests {
             PERK_MANTLE_REDUCTION_DEFAULT,
         );
         assert_eq!(bind.length_msec(false, 1), 866);
-        assert_eq!(bind.length_msec(true, 1), 433);
+        assert_eq!(bind.length_msec(true, 1), 346);
         assert_eq!(bind.length_msec(false, 8), 333);
         assert_eq!(bind.length_msec(true, 8), 333);
         // The quicker climb covers the same ground.

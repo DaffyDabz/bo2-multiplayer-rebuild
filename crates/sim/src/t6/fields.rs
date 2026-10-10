@@ -90,6 +90,12 @@ pub(super) fn get(
             "velocity" => Some(Value::Vec3(
                 frame(world).player(id).map_or([0.0; 3], |ps| ps.velocity),
             )),
+            // 1 from a dive's take-off until its slide ends.
+            "divetoprone" => Some(Value::Int(
+                frame(world)
+                    .player(id)
+                    .map_or(0, |ps| movement_iw4::dive_to_prone(ps) as i32),
+            )),
             s if STATS.contains(&s) => Some(Value::Int(
                 world
                     .resource::<Zm>()

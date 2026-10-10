@@ -16,7 +16,8 @@ pub struct CmdScaleWalkContext {
 
     pub weapon_ads_move_speed_scale: f32,
 
-    pub shellshock_affects_movement: bool,
+    /// Walking speed scale while shellshocked (1 = not slowed).
+    pub shellshock_movement_scale: f32,
 }
 
 #[must_use]
@@ -76,8 +77,8 @@ pub fn cmd_scale_walk(ps: &PlayerState, cmd: &UserCmd, context: CmdScaleWalkCont
         }
     }
 
-    if (flags & 0x8000) != 0 && context.shellshock_affects_movement {
-        scale *= 0.4_f32;
+    if (flags & 0x8000) != 0 {
+        scale *= context.shellshock_movement_scale;
     }
 
     scale * ps.move_speed_scale_multiplier

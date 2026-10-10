@@ -378,6 +378,18 @@ fn apply_presented_script_model_dobjs(
             owner.current_model = asset_world::MapXModelAssetKey(base.model.clone());
         }
         if owner.dobj_state != *state {
+            // bo2mp test aid (IW4L_T6_HITLOG=1): a model's hidden parts as
+            // the client gets them (a broken mannequin's head).
+            if owner.dobj_state.hide_part_bits != state.hide_part_bits
+                && std::env::var_os("IW4L_T6_HITLOG").is_some()
+            {
+                diag::info!(
+                    World,
+                    "bo2mp script model {} hides {:08x?}",
+                    base.model,
+                    state.hide_part_bits.words()
+                );
+            }
             owner.dobj_state = state.clone();
         }
 
@@ -609,7 +621,10 @@ fn occupy_script_model_scene_ents(
             .iter()
             .map(|skel| submodel_camera_lod(skel, lod_view))
             .collect();
-        let hide = *owner.dobj_state.hide_part_bits.words();
+        // bo2mp: hidden bones are cut when the model is posed
+        // (`drop_hidden_vert_lists`, Black Ops II's rule); this pass would drop
+        // a whole surface for any one hidden bone.
+        let hide = [0u32; 6];
         let models: Vec<AnimDObjSceneModel> = skels
             .iter()
             .zip(camera_lods.iter())
@@ -1398,6 +1413,7 @@ pub fn pose_script_dobj_with_materials(
 ) -> Option<(Vec<PosedModelSurface>, Vec<Option<assets::MaterialIndex>>)> {
     let world = xmodel_runtime::pose_dobj(dobj, request, Mat4::IDENTITY).ok()?;
     let skin = dobj.skin_matrices(&world);
+    let hide = request.hide_part_bits.words();
     let mut surfaces = Vec::new();
     let mut materials = Vec::new();
     for (model, skel) in skels.iter().enumerate() {
@@ -1408,20 +1424,23 @@ pub fn pose_script_dobj_with_materials(
             continue;
         }
         let base = dobj.models.get(model)?.base;
+        // bo2mp: Black Ops II hides by bone, not by surface: a surface goes
+        // only when all its bones are hidden (a broken mannequin's head
+        // shares its material with her body and arms).
         let posed = skin_model_filtered(
             skel,
             |bone| skin[base + bone],
             &[],
             |surface_index| {
-                dobj.surface_visible(
-                    model,
+                !anim_iw4::surface_hidden_whole(
                     &skel.surface_part_bits[surface_index],
-                    &request.hide_part_bits,
+                    hide,
+                    base as u32,
                 ) && dpvs_iw4::SceneEntSkinEntry::stream_draws(
-                    skin_entries,
-                    model as u16,
-                    lod_local_surface(skel, lod, surface_index) as u16,
-                )
+                        skin_entries,
+                        model as u16,
+                        lod_local_surface(skel, lod, surface_index) as u16,
+                    )
             },
             |surface_index| {
                 stream_lod_surface_rigid(skel, lod, skin_entries, model as u16, surface_index)
@@ -1432,6 +1451,7 @@ pub fn pose_script_dobj_with_materials(
         let mut posed = posed;
         for surface in &mut posed {
             surface.model = model as u16;
+            drop_hidden_vert_lists(skel, surface, hide, base as u32);
         }
         for surface in &posed {
             materials.push(
@@ -1441,6 +1461,43 @@ pub fn pose_script_dobj_with_materials(
         surfaces.extend(posed);
     }
     Some((surfaces, materials))
+}
+
+/// bo2mp: Black Ops II skins a rigid surface one vertex list (one bone) at
+/// a time and skips the lists whose bone is hidden, with their triangles.
+/// A deformed surface is skinned whole.
+fn drop_hidden_vert_lists(
+    skel: &asset_model::ModelSkel,
+    surface: &mut PosedModelSurface,
+    hide: &[u32; 6],
+    base: u32,
+) {
+    let index = surface.surface_index;
+    if skel.surface_deformed.get(index).copied().flatten() != Some(false)
+        || !anim_iw4::surface_hidden(&skel.surface_part_bits[index], hide, base)
+    {
+        return;
+    }
+    let Some(&(first, _)) = skel.surface_vertex_ranges.get(index) else {
+        return;
+    };
+    let Some(bevy::render::mesh::Indices::U32(indices)) = surface.mesh.indices() else {
+        return;
+    };
+    let hidden = |local: u32| {
+        skel.vert_skin.get(first + local as usize).is_some_and(|skin| {
+            anim_iw4::hide_part_bit(hide, base as usize + usize::from(skin.bones[0]))
+        })
+    };
+    let kept: Vec<u32> = indices
+        .chunks_exact(3)
+        .filter(|tri| !tri.iter().any(|&v| hidden(v)))
+        .flatten()
+        .copied()
+        .collect();
+    surface
+        .mesh
+        .insert_indices(bevy::render::mesh::Indices::U32(kept));
 }
 
 #[derive(Clone, Copy, Debug)]

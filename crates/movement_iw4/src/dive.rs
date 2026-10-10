@@ -10,12 +10,16 @@
 //! ordinary prone. A get-up pressed during the dive is kept, so the player
 //! rises the moment the dive ends.
 //!
-//! BO2 names the phases in its dvars (`dtp_startup_delay`, `dtp_min_speed`,
-//! `dtp_max_slide_duration`, `dtp_post_move_pause`), but their values live in
-//! the executable, not the game files. The time in the air matches BO2's own
-//! dive animation (`pb_dive_prone`, 22 frames at 30 = 0.733 s from take-off
-//! to touch-down; common_zm); the rest is tuned by feel and waits for a
-//! measurement in real BO2.
+//! The timings are BO2's own dive dvar defaults: `dtp_startup_delay` 250 ms
+//! of sprint before a dive, `dtp_min_speed` 3.16, `dtp_max_apex_duration`
+//! 400 ms at the top, `dtp_max_slide_duration` 300 ms of slide,
+//! `dtp_post_move_pause` 100 ms, and `dtp_exhaustion_window` 1.5 s from one
+//! dive's slide ending to the next dive. The pop is twice a jump's launch
+//! speed (`dtp_new_trajectory_multiplier` 2) and the hold is at a jump's
+//! height (`jump_height`), so the time in the air matches BO2's own dive
+//! animation (`pb_dive_prone`, 22 frames at 30 = 0.733 s from take-off to
+//! touch-down; common_zm). As in BO2 the player can steer a little through
+//! the flight and the slide: air control at 0.4 of the usual wish speed.
 //!
 //! State rides in the replicated player state, so the host and the local
 //! prediction agree: `PMF_DIVE` in the air, `PMF_DIVE_SLIDE` from touch-down
@@ -44,19 +48,27 @@ pub const PMF_DIVE_PRONE: u32 = 0x0400_0000;
 /// back down until it is let go.
 pub const PMF_DIVE_GETUP: u32 = 0x0800_0000;
 
-/// How long the player must have been sprinting before a dive can start.
-const STARTUP_MS: i32 = 100;
-/// The least ground speed a dive starts from.
-const MIN_SPEED: f32 = 150.0;
-/// How high the dive rises above the take-off: a jump's height.
-const GLIDE_HEIGHT: f32 = 39.0;
-/// The take-off's upward speed: twice a jump's, so the dive reaches its
-/// height in under a tenth of a second.
-const POP_SPEED: f32 = 500.0;
-/// How long after take-off the dive holds its height before it drops. With
-/// gravity 800 the drop takes 0.31 s, so the player is in the air about
-/// 0.71 s, against the animation's 0.733 s.
+/// A dive starts only after more than this long sprinting
+/// (`dtp_startup_delay`).
+const STARTUP_MS: i32 = 250;
+/// A dive starts only above this ground speed (`dtp_min_speed`): any real
+/// movement.
+const MIN_SPEED: f32 = 3.16;
+/// Another dive waits until more than this long after the last one's slide
+/// ended (`dtp_exhaustion_window`).
+const EXHAUSTION_MS: i32 = 1500;
+/// The take-off's upward speed is this many times a jump's
+/// (`dtp_new_trajectory_multiplier`), so the dive reaches a jump's height in
+/// under a tenth of a second.
+const POP_SCALE: f32 = 2.0;
+/// How long after take-off the dive holds a jump's height before it drops
+/// (`dtp_max_apex_duration`). With jump height 39 and gravity 800 the drop
+/// takes 0.31 s, so the player is in the air about 0.71 s, against the
+/// animation's 0.733 s.
 const GLIDE_MS: i32 = 400;
+/// Within this of the dive's height counts as there, so the hold keeps it.
+/// A dive stopped short by a ceiling does not hold: it drops at once.
+const AT_TOP: f32 = 1.0;
 /// The slide on the ground after touch-down. Friction comes in gradually
 /// over it; at its end the player stops.
 const SLIDE_MS: i32 = 300;
@@ -68,6 +80,15 @@ const PAUSE_MS: i32 = 100;
 /// A dive is under way (in the air, sliding or pausing).
 pub fn active(ps: &PlayerState) -> bool {
     ps.pm_flags & (PMF_DIVE | PMF_DIVE_SLIDE) != 0
+}
+
+/// BO2's `divetoprone` for scripts: from take-off until the slide ends
+/// (not the pause after it). PhD Flopper's blast and the dive notifies
+/// read this.
+pub fn dive_to_prone(ps: &PlayerState) -> bool {
+    ps.pm_flags & PMF_DIVE != 0
+        || (ps.pm_flags & PMF_DIVE_SLIDE != 0
+            && ps.command_time.wrapping_sub(ps.jump_time) < SLIDE_MS)
 }
 
 /// Any part of a dive, up to the player being back on their feet.
@@ -95,10 +116,15 @@ pub fn wants(ps: &PlayerState, cmd: &UserCmd, old_buttons: u32) -> bool {
     if !prone && !pad_stance {
         return false;
     }
-    if cmd.server_time.wrapping_sub(ps.last_sprint_start) < STARTUP_MS {
+    if cmd.server_time.wrapping_sub(ps.last_sprint_start) <= STARTUP_MS {
         return false;
     }
-    ground_speed(ps) >= MIN_SPEED
+    if ps.dive_end_time != 0
+        && (0..=EXHAUSTION_MS).contains(&cmd.server_time.wrapping_sub(ps.dive_end_time))
+    {
+        return false;
+    }
+    ground_speed(ps) > MIN_SPEED
 }
 
 fn ground_speed(ps: &PlayerState) -> f32 {
@@ -140,13 +166,18 @@ fn direction(ps: &PlayerState, pml: &Pml, cmd: &UserCmd, speed: f32) -> [f32; 2]
     }
 }
 
+/// The take-off's upward speed: `POP_SCALE` times a jump's.
+fn pop_speed(ps: &PlayerState, jump_height: f32) -> f32 {
+    POP_SCALE * libm::sqrtf(2.0 * jump_height * ps.gravity as f32)
+}
+
 /// Launch the dive: sprint ends, the player crouches (a smaller hull for
 /// the flight) and leaves the ground at their running speed.
-pub fn start(ps: &mut PlayerState, pml: &mut Pml, cmd: &UserCmd) {
+pub fn start(ps: &mut PlayerState, pml: &mut Pml, cmd: &UserCmd, jump_height: f32) {
     end_sprint(ps, cmd);
     let speed = ground_speed(ps);
     let dir = direction(ps, pml, cmd, speed);
-    ps.velocity = [dir[0] * speed, dir[1] * speed, POP_SPEED];
+    ps.velocity = [dir[0] * speed, dir[1] * speed, pop_speed(ps, jump_height)];
     ps.pm_flags = (ps.pm_flags
         & !(pm_flags::PRONE | pm_flags::JUMPING | PMF_DIVE_PRONE | PMF_DIVE_GETUP))
         | pm_flags::CROUCH
@@ -190,27 +221,33 @@ fn begin_getup(ps: &mut PlayerState, cmd: &UserCmd) {
 
 const EV_STANCE_FORCE_STAND: i32 = 6;
 
-/// Move one tick of a dive, the player's own input ignored. In the air: up
-/// to the dive's height, level until `GLIDE_MS`, then down under gravity.
-/// On the ground: the slide, friction coming in over `SLIDE_MS`, then still
-/// until the pause ends.
+/// Move one tick of a dive. In the air: up to a jump's height, level until
+/// `GLIDE_MS`, then down under gravity. On the ground: the slide, friction
+/// coming in over `SLIDE_MS`, then still until the pause ends. The player's
+/// own push steers a little through the flight and the slide, not the
+/// pause.
+#[allow(clippy::too_many_arguments)]
 pub fn advance<C: CollisionBackend>(
     ps: &mut PlayerState,
     pml: &mut Pml,
     cmd: &UserCmd,
     bounds: MoveBounds,
     collision: &C,
+    jump_height: f32,
+    spectate_speed_scale: f32,
 ) {
     let elapsed = cmd.server_time.wrapping_sub(ps.jump_time);
     let gravity = ps.gravity as f32;
     let dt = pml.frametime.max(0.001);
     if ps.pm_flags & PMF_DIVE != 0 {
-        let top = ps.jump_origin_z + GLIDE_HEIGHT;
+        crate::air::steer(ps, pml, cmd, spectate_speed_scale);
+        let top = ps.jump_origin_z + jump_height;
         if elapsed < GLIDE_MS {
             let next_vz = ps.velocity[2] - gravity * dt;
             let rise = (ps.velocity[2] + next_vz) * 0.5 * dt;
-            if ps.velocity[2] <= 0.0 || ps.origin[2] + rise >= top {
-                ps.velocity[2] = ((top - ps.origin[2]) / dt).clamp(-POP_SPEED, POP_SPEED);
+            if ps.origin[2] >= top - AT_TOP || ps.origin[2] + rise >= top {
+                let pop = pop_speed(ps, jump_height);
+                ps.velocity[2] = ((top - ps.origin[2]) / dt).clamp(-pop, pop);
                 slide(ps, pml, collision, bounds, None);
                 return;
             }
@@ -218,13 +255,17 @@ pub fn advance<C: CollisionBackend>(
         slide(ps, pml, collision, bounds, Some(gravity));
         return;
     }
+    let pausing = elapsed >= SLIDE_MS;
     if pml.walking == 0 {
         // Slid off an edge: fall.
+        if !pausing {
+            crate::air::steer(ps, pml, cmd, spectate_speed_scale);
+        }
         slide(ps, pml, collision, bounds, Some(gravity));
         return;
     }
     let speed = ground_speed(ps);
-    let next = if elapsed >= SLIDE_MS {
+    let next = if pausing {
         0.0
     } else {
         let ramp = (elapsed.max(0) as f32 / SLIDE_MS as f32).min(1.0);
@@ -234,6 +275,9 @@ pub fn advance<C: CollisionBackend>(
     if speed > 1e-3 {
         ps.velocity[0] *= next / speed;
         ps.velocity[1] *= next / speed;
+    }
+    if !pausing {
+        crate::air::steer(ps, pml, cmd, spectate_speed_scale);
     }
     if (pml.ground_trace[4] & 2) != 0 {
         ps.velocity[2] -= gravity * pml.frametime;
@@ -294,6 +338,7 @@ pub fn settle<C: CollisionBackend>(
         && cmd.server_time.wrapping_sub(ps.jump_time) >= SLIDE_MS + PAUSE_MS
     {
         ps.pm_flags &= !PMF_DIVE_SLIDE;
+        ps.dive_end_time = ps.jump_time.wrapping_add(SLIDE_MS);
         ps.velocity[0] = 0.0;
         ps.velocity[1] = 0.0;
         if ps.pm_flags & PMF_DIVE_GETUP != 0 {
@@ -335,7 +380,7 @@ pub fn stance_cmd(ps: &PlayerState, cmd: &UserCmd) -> UserCmd {
 }
 
 /// The command the aim update sees: the sprint key, held through a dive,
-/// does not drop the aim, and the player's own movement (ignored in a dive)
+/// does not drop the aim, and the player's own push (it only steers a dive)
 /// does not count as crawling.
 pub fn ads_cmd(ps: &PlayerState, cmd: &UserCmd, diving: bool) -> UserCmd {
     let mut out = *cmd;

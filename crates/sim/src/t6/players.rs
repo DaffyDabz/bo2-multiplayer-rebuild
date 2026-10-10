@@ -234,6 +234,44 @@ pub(super) fn shock_tick(world: &mut World) {
     }
 }
 
+/// `dtp_start` when he dives, `dtp_end` when the dive's slide ends (PhD
+/// Flopper, the dive challenges, the bots); `sprint_begin` / `sprint_end`
+/// (sprinting into a step trigger plays its sound).
+pub(super) fn movement_events(world: &mut World) {
+    let clients: Vec<(u32, ObjRef, bool, bool)> = world
+        .resource::<Zm>()
+        .players
+        .iter()
+        .map(|(c, p)| (*c, p.obj, p.last_dive, p.last_sprint))
+        .collect();
+    for (c, obj, was_diving, was_sprinting) in clients {
+        let Some(ps) = frame(world).player(crate::world::ClientId(c)).copied() else {
+            continue;
+        };
+        let diving = ps.pm_type <= 9 && movement_iw4::dive_to_prone(&ps);
+        let sprinting = ps.last_sprint_start != 0 && ps.last_sprint_end < ps.last_sprint_start;
+        if let Some(p) = world.resource_mut::<Zm>().players.get_mut(&c) {
+            p.last_dive = diving;
+            p.last_sprint = sprinting;
+        }
+        let mut events: Vec<&str> = Vec::new();
+        if diving != was_diving {
+            events.push(if diving { "dtp_start" } else { "dtp_end" });
+        }
+        if sprinting != was_sprinting {
+            events.push(if sprinting { "sprint_begin" } else { "sprint_end" });
+        }
+        if events.is_empty() {
+            continue;
+        }
+        with_vm(world, |vm, world| {
+            for e in events {
+                vm.notify_str(world, obj, e, &[]);
+            }
+        });
+    }
+}
+
 /// What his weapon did since last tick, as the engine tells scripts:
 /// `weapon_switch_started`, `weapon_change` (a new weapon in hand),
 /// `weapon_change_complete` (raised), `weapon_fired`, `reload_start`,

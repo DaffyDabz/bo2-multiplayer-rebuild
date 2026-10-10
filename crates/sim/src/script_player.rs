@@ -747,8 +747,10 @@ fn perk_bits(name: &str) -> (u32, u32) {
         "specialty_bulletaccuracy" => weapon_iw4::PERK_BULLETACCURACY,
         "specialty_pistoldeath" => playerstate_iw4::PERK_PISTOLDEATH,
         "specialty_fallheight" => movement_iw4::PERK_FALLHEIGHT,
+        "specialty_flakjacket" => movement_iw4::PERK_FLAKJACKET,
         "specialty_fastads" => movement_iw4::PERK_FASTADS,
         "specialty_fastmantle" => movement_iw4::PERK_FASTMANTLE,
+        "specialty_longersprint" => movement_iw4::PERK_LONGERSPRINT,
         _ => 0,
     };
     let e_flags = match name {
@@ -888,7 +890,10 @@ pub(crate) fn constrain_cmd(
     if controls.weapons_disabled {
         cmd.buttons &= !(buttons::ATTACK | buttons::THROW | buttons::ADS | buttons::MELEE_CHARGE);
     }
-    if controls.offhands_disabled || controls.weapons_disabled {
+    if controls.fire_disabled {
+        cmd.buttons &= !(buttons::ATTACK | buttons::THROW | buttons::MELEE_CHARGE);
+    }
+    if controls.offhands_disabled || controls.weapons_disabled || controls.fire_disabled {
         cmd.buttons &= !(buttons::FRAG | buttons::SMOKE);
     }
     if controls.usability_disabled {

@@ -32,7 +32,9 @@ pub use goal_weight::{
     XANIM_LEGS_PARENT_WEIGHT_WHEN_TORSO, client_anim_blend_ms, client_anim_playback_rate,
     goal_time_from_blend_ms, sanitize_goal_weight, vec3_distance,
 };
-pub use hide::{hide_part_bit, or_shift_part_bits, set_hide_part_bit, surface_hidden};
+pub use hide::{
+    hide_part_bit, or_shift_part_bits, set_hide_part_bit, surface_hidden, surface_hidden_whole,
+};
 pub use part_bits::{PartBits, xmodel_no_scale_bit};
 pub use player_anim::{
     ANIM_BODY_PART_NAMES, ANIM_COND_AKIMBO, ANIM_COND_CROUCHING, ANIM_COND_DAMAGETYPE,

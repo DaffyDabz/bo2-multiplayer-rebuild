@@ -102,13 +102,18 @@ pub fn pmove<C: CollisionBackend, L: MantleXAnimLength, R: MantleRootDelta>(
     // bo2zm: Black Ops II's dive to prone starts from a sprint, so it is
     // decided before the sprint and stance updates see the prone press;
     // while it lasts, the dive owns sprint, stance and movement.
-    let dive_start = context.walk.feel.dive && crate::dive::wants(ps, cmd, context.old_buttons);
+    let dive_start = context.walk.feel.dive
+        && !context.weapon_blocks_prone
+        && crate::dive::wants(ps, cmd, context.old_buttons);
     let diving = dive_start || crate::dive::active(ps);
 
     // bo2zm: the gun can aim through a dive (an owner's ask).
     let ads_cmd = crate::dive::ads_cmd(ps, cmd, diving);
     let _ads = update_ads_intent(ps, &ads_cmd, context.old_buttons, context.ads_intent);
     let mut sprint = context.sprint;
+    // bo2zm: Stamin-Up sprints longer.
+    sprint.weapon_max_sprint_time =
+        crate::feel::stamin_up_sprint_time(ps, sprint.weapon_max_sprint_time, context.walk.feel);
     if ps.pm_flags & 3 != 0 {
         sprint.stand_up_clear = collision
             .trace(GroundTraceInput {
@@ -252,11 +257,19 @@ pub fn pmove<C: CollisionBackend, L: MantleXAnimLength, R: MantleRootDelta>(
 
     if diving {
         if dive_start {
-            crate::dive::start(ps, &mut pml, cmd);
+            crate::dive::start(ps, &mut pml, cmd, context.walk.jump.jump_height);
         } else {
             crate::dive::queue_getup(ps, cmd, context.old_buttons);
         }
-        crate::dive::advance(ps, &mut pml, cmd, bounds, collision);
+        crate::dive::advance(
+            ps,
+            &mut pml,
+            cmd,
+            bounds,
+            collision,
+            context.walk.jump.jump_height,
+            context.air.player_spectate_speed_scale,
+        );
     } else if (ps.pm_flags & pm_flags::LADDER) != 0 {
         ladder_move(
             ps,

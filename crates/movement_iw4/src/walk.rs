@@ -53,6 +53,7 @@ pub fn walk_move<C: CollisionBackend>(
     friction(ps, pml, context.feel.on);
 
     let cmd_scale = crate::feel::omni_cmd_scale(ps, context.cmd_scale, context.feel); // bo2zm
+    let cmd_scale = crate::feel::stamin_up_cmd_scale(ps, cmd_scale, context.feel); // bo2zm
     let command_scale =
         cmd_scale_walk(ps, cmd, cmd_scale) * crate::damage_scale_walk(ps.damage_timer);
     crate::walk_move_drop_damage_timer(ps, pml.frametime);
@@ -76,7 +77,7 @@ pub fn walk_move<C: CollisionBackend>(
         pml,
         &wishdir,
         wishspeed * context.weapon_move_scale * command_scale,
-        walk_accel_scale(ps, pml),
+        walk_accel_scale(ps, pml, context.feel.on),
     );
 
     if (pml.ground_trace[4] & 2) != 0 || (ps.pm_flags & 0x100) != 0 {
@@ -140,7 +141,7 @@ fn normalize(vector: &mut [f32; 3]) -> f32 {
     length
 }
 
-fn walk_accel_scale(ps: &PlayerState, pml: &Pml) -> f32 {
+fn walk_accel_scale(ps: &PlayerState, pml: &Pml, bo2: bool) -> f32 {
     const ACCEL_PRONE: f32 = 19.0;
 
     const ACCEL_CROUCH: f32 = 12.0;
@@ -151,8 +152,11 @@ fn walk_accel_scale(ps: &PlayerState, pml: &Pml) -> f32 {
 
     const SLOW_WALK_SCALE: f32 = 0.25;
 
-    let slick = (pml.ground_trace[4] & 2) != 0 || (ps.pm_flags & 0x100) != 0;
-    let mut accel = if slick {
+    let slick_ground = (pml.ground_trace[4] & 2) != 0;
+    let slick = slick_ground || (ps.pm_flags & 0x100) != 0;
+    let mut accel = if bo2 && slick_ground {
+        crate::feel::SLICK_ACCEL // bo2zm
+    } else if slick {
         ACCEL_SLICK
     } else {
         match stance_surface_type(ps) {

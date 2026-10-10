@@ -19,6 +19,8 @@ pub struct PlayerState {
     pub v_ladder_vec: [f32; 3],
     pub jump_time: i32,
     pub jump_origin_z: f32,
+    /// bo2zm: when the last dive's slide ended (0: no dive yet).
+    pub dive_end_time: i32,
     pub legs_timer: i32,
     pub legs_anim: i32,
     pub torso_timer: i32,
@@ -256,6 +258,7 @@ impl PlayerState {
         v_ladder_vec: [0.0; 3],
         jump_time: 0,
         jump_origin_z: 0.0,
+        dive_end_time: 0,
         legs_timer: 0,
         legs_anim: 0,
         torso_timer: 0,

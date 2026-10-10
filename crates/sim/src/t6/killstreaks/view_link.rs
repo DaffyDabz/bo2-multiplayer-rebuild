@@ -12,7 +12,8 @@
 //! tag (the script aims its laser and missiles from there), and BO2's HUD
 //! hears the Lodestar (`bo2mp_vehicle` "remote_mortar_mp"). The gun in his
 //! hands does not fire while his view is away (his trigger is the script's:
-//! `attackbuttonpressed` fires the drone's missiles), as on a vehicle ride.
+//! `attackbuttonpressed` fires the drone's missiles), but he still aims it:
+//! BO2's Lodestar weapon (remote_mortar_mp) zooms to 10 on aim.
 
 use bevy_ecs::prelude::World;
 use gsc_t6::{Value, Vm};
@@ -93,7 +94,7 @@ pub(super) fn end(world: &mut World, client: u32) {
         if f.client_meta(ClientId(client)).is_some() {
             let m = f.client_meta_mut(ClientId(client));
             m.controls.jump_disabled = false;
-            m.controls.weapons_disabled = false;
+            m.controls.fire_disabled = false;
             m.view_pitch_clamp = None;
         }
     }
@@ -156,7 +157,7 @@ pub(super) fn bind(vm: &mut Vm<World>) {
                 let m = f.client_meta_mut(id);
                 m.view_pitch_clamp = Some(clamp);
                 m.controls.jump_disabled = true;
-                m.controls.weapons_disabled = true;
+                m.controls.fire_disabled = true;
             }
         }
         if !hud.is_empty() {
@@ -189,8 +190,8 @@ pub(super) fn advance(world: &mut World) {
             end(world, c);
             continue;
         };
-        // His body stays where he stood, his own gun quiet; his last
-        // command's view.
+        // His body stays where he stood, his own gun quiet (he still aims);
+        // his last command's view.
         let cmd_yaw = {
             let mut req = world.resource_mut::<crate::step::StepRequest>();
             let mut last = None;
@@ -212,7 +213,7 @@ pub(super) fn advance(world: &mut World) {
             if f.client_meta(id).is_some() {
                 let ctl = &mut f.client_meta_mut(id).controls;
                 ctl.jump_disabled = true;
-                ctl.weapons_disabled = true;
+                ctl.fire_disabled = true;
             }
             if let Some(ps) = f.player_mut(id) {
                 ps.delta_angles[1] += turn;

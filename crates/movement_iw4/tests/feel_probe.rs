@@ -51,7 +51,45 @@ impl CollisionBackend for Floor {
     }
 }
 
-fn context(feel: Bo2Feel, old_buttons: u32, ads_allowed: bool) -> PmoveSingleContext {
+/// The floor and a ceiling at `roof` (none at infinity). A `slick` floor is
+/// ice.
+struct Room {
+    roof: f32,
+    slick: bool,
+}
+
+impl CollisionBackend for Room {
+    fn trace(&self, input: GroundTraceInput) -> Trace {
+        let mut hit = Floor.trace(input);
+        if self.slick && hit.walkable != 0 {
+            hit.surface_flags = 2;
+        }
+        let start = input.start[2] + input.maxs[2];
+        let end = input.end[2] + input.maxs[2];
+        if start <= self.roof && end > self.roof {
+            let fraction = (self.roof - start) / (end - start);
+            if fraction < hit.fraction {
+                hit = Trace {
+                    fraction,
+                    normal: [0.0, 0.0, -1.0],
+                    endpos: input.end,
+                    ..Trace::default()
+                };
+                for i in 0..3 {
+                    hit.endpos[i] = input.start[i] + (input.end[i] - input.start[i]) * fraction;
+                }
+            }
+        }
+        hit
+    }
+}
+
+fn context(
+    feel: Bo2Feel,
+    old_buttons: u32,
+    ads_allowed: bool,
+    weapon_blocks_prone: bool,
+) -> PmoveSingleContext {
     let air = AirMoveContext {
         player_spectate_speed_scale: 1.0,
         shellshock_gravity_scale: 1.0,
@@ -66,7 +104,7 @@ fn context(feel: Bo2Feel, old_buttons: u32, ads_allowed: bool) -> PmoveSingleCon
                 player_last_stand_crawl_speed_scale: 0.15,
                 weapon_move_speed_scale: 1.0,
                 weapon_ads_move_speed_scale: 1.0,
-                shellshock_affects_movement: false,
+                shellshock_movement_scale: 1.0,
             },
             weapon_move_scale: 1.0,
             old_buttons,
@@ -117,7 +155,7 @@ fn context(feel: Bo2Feel, old_buttons: u32, ads_allowed: bool) -> PmoveSingleCon
         },
         player_melee_range: movement_iw4::MELEE_CHARGE_PLAYER_MELEE_RANGE_DEFAULT,
         old_buttons,
-        weapon_blocks_prone: false,
+        weapon_blocks_prone,
     }
 }
 
@@ -128,6 +166,14 @@ struct Run {
     feel: Bo2Feel,
     /// The gun in hand can aim.
     ads: bool,
+    /// The gun in hand blocks prone.
+    blocks_prone: bool,
+    /// A ceiling this high (none at infinity).
+    roof: f32,
+    /// The floor is ice.
+    slick: bool,
+    /// Walking speed scale from a shellshock (1 = none).
+    shock: f32,
 }
 
 impl Run {
@@ -146,6 +192,10 @@ impl Run {
             old_buttons: 0,
             feel,
             ads: false,
+            blocks_prone: false,
+            roof: f32::INFINITY,
+            slick: false,
+            shock: 1.0,
         }
     }
 
@@ -161,11 +211,16 @@ impl Run {
                 buttons,
                 ..UserCmd::default()
             };
+            let mut ctx = context(self.feel, self.old_buttons, self.ads, self.blocks_prone);
+            ctx.walk.cmd_scale.shellshock_movement_scale = self.shock;
             pmove(
                 &mut self.ps,
                 &mut cmd,
-                context(self.feel, self.old_buttons, self.ads),
-                &Floor,
+                ctx,
+                &Room {
+                    roof: self.roof,
+                    slick: self.slick,
+                },
                 &FlatMantleAnimLength::default(),
                 &ZeroMantleRootDelta,
             );
@@ -293,6 +348,42 @@ fn ms_to_stand(run: &mut Run, buttons: u32) -> i32 {
 }
 
 #[test]
+fn a_dive_needs_over_a_quarter_second_of_sprint() {
+    let mut early = Run::new(DIVE);
+    let mut late = Run::new(DIVE);
+    early.hold(150, 127, 0, SPRINT);
+    early.hold(50, 127, 0, SPRINT | PRONE | STANCE_HELD);
+    late.hold(300, 127, 0, SPRINT);
+    late.hold(50, 127, 0, SPRINT | PRONE | STANCE_HELD);
+    assert!(!flag(&early, movement_iw4::PMF_DIVE), "0.15 s of sprint is too soon");
+    assert!(flag(&late, movement_iw4::PMF_DIVE), "0.3 s of sprint dives");
+}
+
+#[test]
+fn another_dive_waits_a_second_and_a_half_after_the_slide() {
+    // Dive, get straight up, then sprint and dive again: 0.3 s of sprint is
+    // too soon after the slide, 1.3 s is not.
+    let again = |sprint_ms: i32| {
+        let mut run = Run::new(DIVE);
+        dive(&mut run, 127, 0, 0);
+        while flag(&run, movement_iw4::PMF_DIVE_SLIDE) || run.ps.view_height_lerp_time != 0 {
+            run.hold(50, 0, 0, 0);
+        }
+        let slide_end = run.ps.dive_end_time;
+        run.hold(50, 0, 0, JUMP);
+        ms_to_stand(&mut run, 0);
+        run.hold(sprint_ms, 127, 0, SPRINT);
+        run.hold(50, 127, 0, SPRINT | PRONE | STANCE_HELD);
+        (flag(&run, movement_iw4::PMF_DIVE), run.time - slide_end)
+    };
+    let (soon, soon_ms) = again(300);
+    let (later, later_ms) = again(1300);
+    eprintln!("second dive {soon_ms} ms after the slide: {soon}; {later_ms} ms: {later}");
+    assert!(!soon && soon_ms <= 1500);
+    assert!(later && later_ms > 1500);
+}
+
+#[test]
 fn omni_sprint_runs_full_speed_any_way_in_bo2() {
     let mut forward = Run::new(DIVE);
     let mut back = Run::new(DIVE);
@@ -347,6 +438,49 @@ fn dive_rises_to_jump_height_and_lands_with_the_animation() {
 }
 
 #[test]
+fn a_dive_steers_a_little() {
+    // Dive straight ahead, then push right through the flight: BO2's air
+    // control at 0.4 of the 190 wish speed, about 76 a second each second.
+    let steer = |right: i8| {
+        let mut run = Run::new(DIVE);
+        run.hold(1000, 127, 0, SPRINT);
+        run.hold(50, 127, 0, SPRINT | PRONE | STANCE_HELD);
+        assert!(flag(&run, movement_iw4::PMF_DIVE), "dived");
+        while flag(&run, movement_iw4::PMF_DIVE) {
+            run.hold(50, 0, right, SPRINT);
+            assert!(run.time < 5000, "the dive came down");
+        }
+        (run.sideways_speed(), run.ps.velocity[0])
+    };
+    let (still, ahead) = steer(0);
+    let (pushed, pushed_ahead) = steer(127);
+    eprintln!("sideways speed at touch-down: {still:.1} still, {pushed:.1} pushing right");
+    assert!(still < 0.01);
+    assert!((30.0..=60.0).contains(&pushed), "pushed {pushed}");
+    assert!((pushed_ahead - ahead).abs() < 0.01, "pushing sideways keeps the forward speed");
+}
+
+#[test]
+fn a_dive_under_a_low_ceiling_drops_at_once() {
+    // The ceiling stops the rise at 20 of the 39: no hold, straight down.
+    let mut run = Run::new(DIVE);
+    run.roof = 90.0;
+    let (air_ms, top) = dive(&mut run, 127, 0, 0);
+    eprintln!("dive under a ceiling: {air_ms} ms in the air, top {top:.1}");
+    assert!(top <= 20.01, "top {top}");
+    assert!(air_ms < 400, "air time {air_ms}");
+}
+
+#[test]
+fn a_gun_that_blocks_prone_cannot_dive() {
+    let mut run = Run::new(DIVE);
+    run.blocks_prone = true;
+    run.hold(1000, 127, 0, SPRINT);
+    run.hold(50, 127, 0, SPRINT | PRONE | STANCE_HELD);
+    assert!(!flag(&run, movement_iw4::PMF_DIVE));
+}
+
+#[test]
 fn dive_slides_pauses_then_holds_prone_without_the_prone_lock() {
     let mut run = Run::new(DIVE);
     dive(&mut run, 127, 0, 0);
@@ -363,6 +497,27 @@ fn dive_slides_pauses_then_holds_prone_without_the_prone_lock() {
     run.hold(500, 0, 0, 0);
     assert!(flag(&run, playerstate_iw4::pm_flags::PRONE), "stays prone");
     assert_eq!(run.ps.pm_flags & playerstate_iw4::pm_flags::JUMPING, 0);
+}
+
+#[test]
+fn scripts_see_the_dive_from_take_off_to_the_slides_end() {
+    let mut run = Run::new(DIVE);
+    run.hold(1000, 127, 0, SPRINT);
+    assert!(!movement_iw4::dive_to_prone(&run.ps), "sprinting is not diving");
+    run.hold(50, 127, 0, SPRINT | PRONE | STANCE_HELD);
+    while flag(&run, movement_iw4::PMF_DIVE) {
+        assert!(movement_iw4::dive_to_prone(&run.ps), "in the air");
+        run.hold(50, 0, 0, SPRINT);
+    }
+    let landed = run.time;
+    while movement_iw4::dive_to_prone(&run.ps) {
+        run.hold(50, 0, 0, SPRINT);
+        assert!(run.time - landed < 1000, "the slide ended");
+    }
+    let slide = run.time - landed;
+    eprintln!("dive seen on the ground for {slide} ms");
+    assert!((250..=300).contains(&slide));
+    assert!(flag(&run, movement_iw4::PMF_DIVE_SLIDE), "the pause still holds him");
 }
 
 #[test]
@@ -450,4 +605,98 @@ fn a_prone_toggle_switched_off_gets_you_up() {
     run.hold(50, 0, 0, 0);
     ms_to_stand(&mut run, 0);
     assert_eq!(run.ps.pm_flags & 3, 0);
+}
+
+const STAMIN_UP: Bo2Feel = Bo2Feel {
+    longer_sprint_perk: movement_iw4::PERK_LONGERSPRINT,
+    sprint_multiplier: 2.0,
+    ..BO2
+};
+
+/// Holds sprint with a gun in hand until the sprint runs out. Returns how
+/// long it lasted (ms) and the speed after 1 s of it.
+fn sprint_out(feel: Bo2Feel, perk: bool) -> (i32, f32) {
+    let mut run = Run::new(feel);
+    run.ps.weapon = 1;
+    if perk {
+        run.ps.perks[0] |= movement_iw4::PERK_LONGERSPRINT;
+    }
+    run.hold(1000, 127, 0, SPRINT);
+    let speed = run.ground_speed();
+    while flag(&run, playerstate_iw4::pm_flags::SPRINTING) && run.time < 20_000 {
+        run.hold(50, 127, 0, SPRINT);
+    }
+    (run.ps.last_sprint_end - run.ps.last_sprint_start, speed)
+}
+
+#[test]
+fn stamin_up_sprints_twice_as_long_and_a_tenth_faster_in_zombies() {
+    let zombies = Bo2Feel {
+        zombies: true,
+        ..STAMIN_UP
+    };
+    let (plain_ms, plain_speed) = sprint_out(zombies, false);
+    let (perk_ms, perk_speed) = sprint_out(zombies, true);
+    let (mp_ms, mp_speed) = sprint_out(STAMIN_UP, true);
+    eprintln!(
+        "sprint: no perk {plain_ms} ms {plain_speed:.1}; Stamin-Up {perk_ms} ms {perk_speed:.1}; MP {mp_ms} ms {mp_speed:.1}"
+    );
+    assert_eq!(plain_ms, 4000);
+    assert_eq!(perk_ms, 8000);
+    assert_eq!(mp_ms, 8000);
+    assert!((perk_speed / plain_speed - 1.1).abs() < 0.01);
+    assert!(
+        (mp_speed - plain_speed).abs() < 0.5,
+        "multiplayer's perk adds no speed"
+    );
+}
+
+/// Walks forward on ice for `ms`, then lets go for `coast_ms`. Returns the
+/// speed after the walk and after the coast.
+fn walk_on_ice(feel: Bo2Feel, ms: i32, coast_ms: i32) -> (f32, f32) {
+    let mut run = Run::new(feel);
+    run.slick = true;
+    run.hold(ms, 127, 0, 0);
+    let walked = run.ground_speed();
+    run.hold(coast_ms, 0, 0, 0);
+    (walked, run.ground_speed())
+}
+
+#[test]
+fn ice_picks_up_twice_as_fast_and_still_slows_you_in_bo2() {
+    let (bo2_start, _) = walk_on_ice(BO2, 200, 0);
+    let (iw4_start, _) = walk_on_ice(Bo2Feel::IW4, 200, 0);
+    let (bo2_full, bo2_coast) = walk_on_ice(BO2, 3000, 500);
+    let (iw4_full, iw4_coast) = walk_on_ice(Bo2Feel::IW4, 3000, 500);
+    eprintln!(
+        "ice: 0.2 s in BO2 {bo2_start:.1} old {iw4_start:.1}; full {bo2_full:.1}/{iw4_full:.1}; after 0.5 s coasting BO2 {bo2_coast:.1} old {iw4_coast:.1}"
+    );
+    // Acceleration 2 against sliding friction 1.5: 19 a frame, less 7.5%
+    // (speeds snap to whole numbers each frame).
+    assert!((bo2_start - 68.0).abs() < 1.0);
+    assert!((iw4_start - 40.0).abs() < 1.0);
+    assert!((bo2_full - 190.0).abs() < 1.0 && (iw4_full - 190.0).abs() < 1.0);
+    // About 190 x 0.925^10: BO2's ice still slows you; the old ice never did.
+    assert!((bo2_coast - 88.0).abs() < 1.0);
+    assert!((iw4_coast - 190.0).abs() < 1.0);
+}
+
+fn walk_shocked(feel: Bo2Feel, shock_file_movement: f32) -> f32 {
+    let mut run = Run::new(feel);
+    run.ps.pm_flags |= playerstate_iw4::pm_flags::SHELLSHOCKED;
+    run.shock = movement_iw4::shellshock_walk_scale(true, shock_file_movement, feel);
+    run.hold(3000, 127, 0, 0);
+    run.ground_speed()
+}
+
+#[test]
+fn a_shellshock_slows_you_by_its_own_number_in_bo2() {
+    // BO2's shock files: explosion and pain 1.0, flashbang 0.8, most 0.4.
+    let bo2: Vec<f32> = [1.0, 0.8, 0.4].map(|m| walk_shocked(BO2, m)).to_vec();
+    let old: Vec<f32> = [1.0, 0.8, 0.4].map(|m| walk_shocked(Bo2Feel::IW4, m)).to_vec();
+    eprintln!("shocked walk: BO2 {bo2:?} old {old:?}");
+    assert!((bo2[0] - 190.0).abs() < 1.0, "an explosion does not slow you");
+    assert!((bo2[1] - 152.0).abs() < 1.0);
+    assert!((bo2[2] - 76.0).abs() < 1.0);
+    assert!(old.iter().all(|s| (s - 76.0).abs() < 1.0), "the old rule: 0.4");
 }

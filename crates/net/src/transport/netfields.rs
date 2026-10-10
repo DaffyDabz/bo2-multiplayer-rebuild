@@ -255,6 +255,7 @@ ps_netfields! {
     v_ladder_vec: vec3 = Replication::Replicated, Validation::Exact;
     jump_time: i32 = Replication::Replicated, Validation::Exact;
     jump_origin_z: f32 = Replication::Replicated, Validation::Exact;
+    dive_end_time: i32 = Replication::Replicated, Validation::Exact;
     legs_timer: i32 = Replication::Replicated, Validation::Exact;
     legs_anim: i32 = Replication::Replicated, Validation::Exact;
     torso_timer: i32 = Replication::Replicated, Validation::Exact;

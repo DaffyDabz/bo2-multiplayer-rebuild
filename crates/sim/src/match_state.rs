@@ -156,6 +156,9 @@ pub struct ClientMatchState {
 pub struct ScriptControls {
     pub frozen: bool,
     pub weapons_disabled: bool,
+    /// bo2mp: his view rides another entity (the Lodestar): his gun does not
+    /// fire, but he still aims (BO2's Lodestar zooms on its own aim).
+    pub fire_disabled: bool,
     pub offhands_disabled: bool,
     pub switch_disabled: bool,
     pub jump_disabled: bool,

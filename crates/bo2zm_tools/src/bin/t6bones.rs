@@ -123,6 +123,32 @@ fn main() {
                 println!("  constant {} = {:?}", k.1, k.2);
             }
         }
+        // bo2mp: a destructible's pieces: health, hidden bones, each stage's
+        // shown bone and what it spawns.
+        if let Some(d) = c.destructibles.iter().find(|d| &d.name == name) {
+            println!(
+                "destructible {name}: model {} pristine {} pieces {} client_only {}",
+                d.model,
+                d.pristine_model,
+                d.pieces.len(),
+                d.client_only
+            );
+            for (i, p) in d.pieces.iter().enumerate() {
+                println!(
+                    "  piece {i}: parent {} health {} bullet x{} hide_bones {:08x?}",
+                    p.parent_piece, p.health, p.bullet_damage_scale, p.hide_bones
+                );
+                for (k, st) in p.stages.iter().enumerate() {
+                    if st.show_bone.is_empty() && st.break_health == 0.0 && k > 0 {
+                        continue;
+                    }
+                    println!(
+                        "    stage {k}: show `{}` break_health {} flags {:x} phys {} spawn {:?}",
+                        st.show_bone, st.break_health, st.flags, st.phys_preset, st.spawn_models
+                    );
+                }
+            }
+        }
         if let Some(e) = c.fx.iter().find(|e| &e.name == name) {
             println!(
                 "fx {name}: loop {} oneshot {} emit {} flags {:#x}",
