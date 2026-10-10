@@ -707,6 +707,7 @@ pub fn sync_camera_from_presented(
         ps.damage_pitch,
         ps.damage_count,
         ps.viewangles,
+        ps.perks[0],
         clock.time(),
     );
     let bob_angles = match weapons.as_ref().and_then(|w| w.0.facts_of(viewmodel)) {
@@ -971,39 +972,35 @@ fn stamp_damage_feedback(
     damage_pitch: u32,
     damage_count: i32,
     viewangles: [f32; 3],
+    perks0: u32,
     cg_time: i32,
 ) {
-    // bo2zm: Black Ops' smallest hit flinch is 0.5, not 5.
-    let kick_min = if bo2_camera(kick) {
-        weapon_iw4::BG_VIEW_KICK_MIN_BO2
-    } else {
-        weapon_iw4::BG_VIEW_KICK_MIN
+    // bo2zm: Black Ops II's own flinch (0.175 a percent of health, a
+    // quarter with Toughness); None keeps the last flinch's angles.
+    let bo2 = bo2_camera(kick);
+    let bullet_flinch = (perks0 & weapon_iw4::PERK_BULLETFLINCH) != 0;
+    let punch = |yaw: u32, pitch: u32, count: i32| {
+        if bo2 {
+            weapon_iw4::damage_feedback_kick_bo2(yaw, pitch, count, viewangles, bullet_flinch)
+        } else {
+            Some(weapon_iw4::damage_feedback_kick(yaw, pitch, count, viewangles))
+        }
     };
     let mut stamped = false;
     if kick.have_damage_prev && damage_event != kick.last_damage_event && damage_count != 0 {
-        let punch = weapon_iw4::damage_feedback_kick_min(
-            damage_yaw,
-            damage_pitch,
-            damage_count,
-            viewangles,
-            kick_min,
-        );
-        kick.v_dmg_pitch = punch.v_dmg_pitch;
-        kick.v_dmg_roll = punch.v_dmg_roll;
+        if let Some(punch) = punch(damage_yaw, damage_pitch, damage_count) {
+            kick.v_dmg_pitch = punch.v_dmg_pitch;
+            kick.v_dmg_roll = punch.v_dmg_roll;
+        }
         kick.damage_time = cg_time.max(1);
         stamped = true;
     }
     if !stamped && hurt.0 > 0 {
         hurt.0 -= 1;
-        let punch = weapon_iw4::damage_feedback_kick_min(
-            VIEW_DAMAGE_UNDIRECTED,
-            VIEW_DAMAGE_UNDIRECTED,
-            1,
-            viewangles,
-            kick_min,
-        );
-        kick.v_dmg_pitch = punch.v_dmg_pitch;
-        kick.v_dmg_roll = punch.v_dmg_roll;
+        if let Some(punch) = punch(VIEW_DAMAGE_UNDIRECTED, VIEW_DAMAGE_UNDIRECTED, 1) {
+            kick.v_dmg_pitch = punch.v_dmg_pitch;
+            kick.v_dmg_roll = punch.v_dmg_roll;
+        }
         kick.damage_time = cg_time.max(1);
     }
     kick.last_damage_event = damage_event;

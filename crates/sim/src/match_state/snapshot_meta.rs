@@ -6,7 +6,7 @@ use super::ClientLifecycle;
 use super::client_view::{
     KillcamHud, LocationSelection, MenuCommand, RadarMode, RemoteMissile, ViewEffects,
 };
-use super::events::{EntityEventRecord, EventRecord, PelletFxRecord, SimEvent};
+use super::events::{DebrisRecord, EntityEventRecord, EventRecord, PelletFxRecord, SimEvent};
 use super::loadout::LoadoutSpec;
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -98,6 +98,9 @@ pub struct SnapshotMeta {
 
     pub pellet_fx: Vec<PelletFxRecord>,
 
+    /// bo2mp: the pieces that broke off this tick (see `DebrisRecord`).
+    pub debris: Vec<DebrisRecord>,
+
     pub sound_aliases: crate::SoundAliasCsOccupied,
 
     pub effect_names: crate::EffectNameCsOccupied,
@@ -133,6 +136,11 @@ pub struct SnapshotMeta {
     /// machines, the Mystery Box) as turned boxes; player movement on both
     /// sides clips against them.
     pub oriented_blockers: Vec<OrientedBlocker>,
+
+    /// bo2zm: the Black Ops II movement rules the game runs with, so a
+    /// second PC's own guess of its moves (it runs no scripts) follows them
+    /// too. None = no rules sent yet.
+    pub feel: Option<movement_iw4::Bo2Feel>,
 }
 
 /// bo2zm: a solid box at any turn: its place, its axes (forward, left,

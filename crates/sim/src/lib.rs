@@ -99,7 +99,7 @@ pub use input::{
 pub use mantle_xanim::{MANTLE_XANIM_NAMES_T6, MantleXAnimBind, PERK_MANTLE_REDUCTION_DEFAULT};
 pub use match_state::{
     ClassDef, ClassRejectReason, ClientLifecycle, ClientSnapshotMeta,
-    ConfigurationChangeRejectReason, DroppedItemAmmo, EntityEventPayload, EntityEventRecord,
+    ConfigurationChangeRejectReason, DebrisRecord, DroppedItemAmmo, EntityEventPayload, EntityEventRecord,
     EventAudience, EventRecord, GiveRejectReason, HealthRegenCensus, InputReceipt,
     ItemPickupRecord, KillcamHud, LoadoutSpec, LocationSelection, MENU_COMMAND_TAIL,
     MatchEndReason, MenuCommand, MenuCommandKind, PelletFxRecord, PersonalClass, RadarMode,

@@ -78,7 +78,7 @@ fn symbol_name(runtime: &Runtime, id: u32) -> Option<Arc<str>> {
     })
 }
 
-fn field(runtime: &Runtime, object: u64, name: &str) -> Option<Value> {
+pub(super) fn field(runtime: &Runtime, object: u64, name: &str) -> Option<Value> {
     let program = runtime.program.as_ref()?;
     let id = program
         .symbol_ids

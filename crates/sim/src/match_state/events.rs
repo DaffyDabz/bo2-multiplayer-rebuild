@@ -94,6 +94,26 @@ pub struct PelletFxRecord {
     pub flesh_flags: u8,
 }
 
+/// bo2mp: a destructible's broken-off piece (a mannequin's head) coming
+/// loose. Clients spawn its model where the shown bone was, turned the
+/// same way, and fly it themselves, as Black Ops II's clients spawn a
+/// break's pieces as loose clutter.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DebrisRecord {
+    pub model: String,
+    pub origin: [f32; 3],
+    /// The bone's turn as a quaternion (x, y, z, w).
+    pub rotation: [f32; 4],
+    /// The launch speed the hit gave it.
+    pub velocity: [f32; 3],
+    pub mass: f32,
+    pub bounce: f32,
+    pub friction: f32,
+    /// How hard later bullets and blasts push it (`physPreset`).
+    pub bullet_force_scale: f32,
+    pub explosive_force_scale: f32,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum SimEvent {
     ClassAccepted {

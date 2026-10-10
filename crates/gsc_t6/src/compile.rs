@@ -1475,6 +1475,25 @@ mod tests {
         assert_eq!(level_int(&mut vm, "both"), Some(1));
     }
 
+    /// bo2mp: a bare call to a name the engine has binds to the engine's
+    /// when asked (Black Ops II's linker), else to the script's own.
+    #[test]
+    fn engine_first_names_bind_to_the_engine() {
+        let src = "vectorcross(a, b) { return (0, 0, 7); }
+             main() { v = vectorcross((1, 0, 0), (0, 1, 0)); level.z = int(v[2]); }";
+        for (engine_first, want) in [(&[][..], 7), (&[("vectorcross", false)][..], 1)] {
+            let obj = compile("test/t", src).expect("compiles");
+            let mut strings = Strings::default();
+            let program = Program::link_with(vec![obj], &mut strings, engine_first).expect("links");
+            let mut vm = Vm::new(program, strings);
+            crate::natives::bind_core(&mut vm);
+            let level = Value::Object(vm.level);
+            vm.spawn_named(&mut (), "test/t", "main", level, vec![])
+                .expect("main exists");
+            assert_eq!(level_int(&mut vm, "z"), Some(want));
+        }
+    }
+
     #[test]
     fn arrays_foreach_switch_and_fields() {
         let mut vm = run(

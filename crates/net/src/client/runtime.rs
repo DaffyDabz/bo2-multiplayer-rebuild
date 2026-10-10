@@ -42,6 +42,11 @@ pub struct PendingPresentedEntityEvents {
 #[derive(Resource, Default)]
 pub struct PendingPelletFx(pub Vec<sim::PelletFxRecord>);
 
+/// bo2mp: broken-off pieces the server sent that this PC has not spawned
+/// yet.
+#[derive(Resource, Default)]
+pub struct PendingDebris(pub Vec<sim::DebrisRecord>);
+
 fn collect_received_entity_events(
     last_tick: Option<sim::Tick>,
     local: sim::ClientId,
@@ -501,6 +506,7 @@ pub fn reconcile_prediction(
     mut pending: ResMut<PendingClientSends>,
     mut entity_events: ResMut<PendingPresentedEntityEvents>,
     mut pellet_fx: ResMut<PendingPelletFx>,
+    mut debris: ResMut<PendingDebris>,
     trace: Option<ResMut<ClientPhaseTrace>>,
 ) {
     push_phase(trace, "Reconcile");
@@ -515,6 +521,7 @@ pub fn reconcile_prediction(
             continue;
         }
         pellet_fx.0.append(&mut tick.snapshot.meta.pellet_fx);
+        debris.0.append(&mut tick.snapshot.meta.debris);
         reliable.apply(local.0, &tick.frame.reliable);
         let ack = tick.ack_for(local.0);
         if let Some(acked) = ack {
@@ -730,6 +737,11 @@ pub fn sample_client_input(
         .0
         .predicted_local()
         .or_else(|| presented.player(local.0));
+    // bo2zm: the stance button dives when held while sprinting at full height.
+    actions.client.sprinting = ps.is_some_and(|ps| {
+        ps.pm_flags & playerstate_iw4::pm_flags::SPRINTING != 0
+            && ps.view_height_current >= movement_iw4::view_height::STAND as f32
+    });
 
     let frozen = ps.is_some_and(|ps| (ps.pm_flags & 0x800) != 0)
         || presented
@@ -1825,9 +1837,10 @@ pub fn reset_cgame_on_match_torn_down(
     mut presented: ResMut<PresentedSnapshot>,
     mut present_census: ResMut<PresentLocalCensus>,
     mut select: ResMut<WeaponSelect>,
-    (mut entity_events, mut pellet_fx, mut entity_event_cursor): (
+    (mut entity_events, mut pellet_fx, mut debris, mut entity_event_cursor): (
         ResMut<PendingPresentedEntityEvents>,
         ResMut<PendingPelletFx>,
+        ResMut<PendingDebris>,
         ResMut<crate::EntityEventCursor>,
     ),
     (mut reliable_ack, mut actions, mut events, mut scores): (
@@ -1861,6 +1874,7 @@ pub fn reset_cgame_on_match_torn_down(
 
     *entity_events = PendingPresentedEntityEvents::default();
     pellet_fx.0.clear();
+    debris.0.clear();
     *entity_event_cursor = crate::EntityEventCursor::default();
 
     *reliable_ack = ClientReliableAck::default();
@@ -1895,6 +1909,7 @@ pub fn register_client_runtime(app: &mut App) {
         .init_resource::<PresentLocalCensus>()
         .init_resource::<PendingPresentedEntityEvents>()
         .init_resource::<PendingPelletFx>()
+        .init_resource::<PendingDebris>()
         .init_resource::<PendingClientSends>()
         .init_resource::<ClientCmdTemplate>()
         .init_resource::<WeaponSelect>()

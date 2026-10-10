@@ -9,8 +9,8 @@ use bevy::mesh::VertexBufferLayout;
 use bevy::prelude::*;
 use bevy::render::RenderStartup;
 use bevy::render::render_resource::binding_types::{
-    sampler, texture_2d, texture_cube, texture_cube_array, texture_depth_2d, uniform_buffer,
-    uniform_buffer_sized,
+    sampler, texture_2d, texture_2d_array, texture_cube, texture_cube_array, texture_depth_2d,
+    uniform_buffer, uniform_buffer_sized,
 };
 use bevy::render::render_resource::{
     AddressMode, BindGroup, BindGroupEntries, BindGroupLayoutDescriptor, BindGroupLayoutEntries,
@@ -41,6 +41,8 @@ use render_frame::{
 use render_material::MaterialGenerationId;
 
 const SHADER_PATH: &str = "embedded://render_gpu/drawsurf/geometry_diagnostic.wgsl";
+
+mod sun_shadow;
 
 fn geometry_diagnostic_covers(kind: &RetainedDrawKind, key: u64) -> bool {
     !matches!(
@@ -141,6 +143,8 @@ pub struct ExtractedDiagnosticGeometry {
     /// bo2zm: the T6 sun direction and exposure scale, the sun colour, then
     /// the sky's rotation and brightness.
     pub t6_lighting: Option<[[f32; 4]; 3]>,
+    /// bo2mp: the map's `sm_sunSampleSizeNear`; 0 = not set.
+    pub t6_sun_sample_size_near: f32,
     /// bo2zm: Black Ops II props: `[surface, colour slot, draw code,
     /// instance]` per first-LOD surface of each placement.
     pub t6_props: Arc<Vec<[u32; 4]>>,
@@ -296,6 +300,7 @@ struct DiagnosticGeometry {
     world_surface_draw: Arc<Vec<u32>>,
     world_surface_lightmap: Arc<Vec<u8>>,
     t6_lighting: Option<[[f32; 4]; 3]>,
+    t6_sun_sample_size_near: f32,
     t6_props: Arc<Vec<[u32; 4]>>,
     t6_prop_shine: Arc<Vec<[u32; 3]>>,
     world_surface_primary: Arc<Vec<u8>>,
@@ -1222,6 +1227,9 @@ fn init_pipeline(mut commands: Commands, asset_server: Res<AssetServer>) {
                     uniform_buffer_sized(false, std::num::NonZeroU64::new(48)),
                     uniform_buffer_sized(false, std::num::NonZeroU64::new(T6_LIGHTS_BYTES)),
                     uniform_buffer_sized(false, std::num::NonZeroU64::new(T6_DYN_BYTES)),
+                    texture_2d_array(TextureSampleType::Depth),
+                    sampler(SamplerBindingType::Comparison),
+                    uniform_buffer_sized(false, std::num::NonZeroU64::new(sun_shadow::PARAMS_BYTES)),
                 ),
             ),
         ),
@@ -1250,6 +1258,15 @@ fn init_pipeline(mut commands: Commands, asset_server: Res<AssetServer>) {
                     (
                         4,
                         uniform_buffer_sized(false, std::num::NonZeroU64::new(T6_DYN_BYTES)),
+                    ),
+                    (5, texture_2d_array(TextureSampleType::Depth)),
+                    (6, sampler(SamplerBindingType::Comparison)),
+                    (
+                        7,
+                        uniform_buffer_sized(
+                            false,
+                            std::num::NonZeroU64::new(sun_shadow::PARAMS_BYTES),
+                        ),
                     ),
                 ),
             ),
@@ -1400,6 +1417,7 @@ fn upload_geometry(
     geometry.world_surface_draw = Arc::clone(&source.world_surface_draw);
     geometry.world_surface_lightmap = Arc::clone(&source.world_surface_lightmap);
     geometry.t6_lighting = source.t6_lighting;
+    geometry.t6_sun_sample_size_near = source.t6_sun_sample_size_near;
     geometry.t6_props = Arc::clone(&source.t6_props);
     geometry.t6_prop_shine = Arc::clone(&source.t6_prop_shine);
     geometry.world_surface_primary = Arc::clone(&source.world_surface_primary);
@@ -1525,12 +1543,13 @@ fn prepare_world_lightmaps(
     queue: Res<RenderQueue>,
     mut lightmaps: ResMut<DiagnosticWorldLightmaps>,
     dynamic_source: Option<Res<ExtractedT6Dynamic>>,
+    shadow: Option<Res<sun_shadow::SunShadow>>,
 ) {
     if !geometry_diagnostic_enabled() {
         return;
     }
-    let (Some(pipeline), Some(registry), Some(lighting)) =
-        (pipeline, registry, geometry.t6_lighting)
+    let (Some(pipeline), Some(registry), Some(lighting), Some(shadow)) =
+        (pipeline, registry, geometry.t6_lighting, shadow)
     else {
         return;
     };
@@ -1609,6 +1628,9 @@ fn prepare_world_lightmaps(
                 (2, constants.as_entire_binding()),
                 (3, lights.as_entire_binding()),
                 (4, dyn_lights.as_entire_binding()),
+                (5, &shadow.array),
+                (6, &shadow.sampler),
+                (7, shadow.params.as_entire_binding()),
             )),
         ));
     }
@@ -1670,6 +1692,9 @@ fn prepare_world_lightmaps(
                 constants.as_entire_binding(),
                 lights.as_entire_binding(),
                 dyn_lights.as_entire_binding(),
+                &shadow.array,
+                &shadow.sampler,
+                shadow.params.as_entire_binding(),
             )),
         );
         lightmaps.bind_groups.insert(page, bind_group);
@@ -2873,6 +2898,7 @@ pub(super) fn register(app: &mut App) {
         return;
     }
     bevy::asset::embedded_asset!(app, "geometry_diagnostic.wgsl");
+    bevy::asset::embedded_asset!(app, "t6_sun_shadow.wgsl");
     super::bo2_bloom::register(app);
     super::bo2_dof::register(app);
     let Some(render_app) = app.get_sub_app_mut(bevy::render::RenderApp) else {
@@ -2886,7 +2912,7 @@ pub(super) fn register(app: &mut App) {
         .init_resource::<DiagnosticDynamic>()
         .init_resource::<ExtractedT6Dynamic>()
         .init_resource::<SpecializedRenderPipelines<DiagnosticPipeline>>()
-        .add_systems(RenderStartup, init_pipeline)
+        .add_systems(RenderStartup, (init_pipeline, sun_shadow::init))
         .add_systems(
             Render,
             (
@@ -2899,9 +2925,14 @@ pub(super) fn register(app: &mut App) {
         )
         .add_systems(
             Core3d,
-            draw_geometry_diagnostic
-                .in_set(Core3dSystems::MainPass)
-                .after(main_opaque_pass_3d)
-                .after(super::draw::ExactColourDrawSet),
+            (
+                sun_shadow::draw_sun_shadow
+                    .in_set(Core3dSystems::MainPass)
+                    .before(draw_geometry_diagnostic),
+                draw_geometry_diagnostic
+                    .in_set(Core3dSystems::MainPass)
+                    .after(main_opaque_pass_3d)
+                    .after(super::draw::ExactColourDrawSet),
+            ),
         );
 }

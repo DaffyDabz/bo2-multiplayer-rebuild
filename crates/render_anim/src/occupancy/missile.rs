@@ -41,6 +41,51 @@ pub struct T6MissileModel {
     /// bo2zm M3: skinned positions and normals in model space (an animated
     /// model); none = bind pose.
     pub posed: Option<std::sync::Arc<PosedVerts>>,
+    /// bo2mp: the parts hidden on its entity (a mannequin's shot-off head)
+    /// and where this model's bones start among them; none = all drawn.
+    pub hide: Option<([u32; 6], u32)>,
+}
+
+impl T6MissileModel {
+    /// bo2mp: a surface's triangles as Black Ops II draws them with the
+    /// model's hidden parts: none when every bone the surface is skinned to
+    /// is hidden; a rigid surface with some of its bones hidden loses those
+    /// bones' vertex lists; else all of them.
+    pub fn drawn_indices<'a>(
+        &self,
+        surface: usize,
+        indices: &'a [u32],
+    ) -> Option<std::borrow::Cow<'a, [u32]>> {
+        let all = Some(std::borrow::Cow::Borrowed(indices));
+        let Some((hide, base)) = self.hide else {
+            return all;
+        };
+        let skel = &self.skel;
+        let Some(bits) = skel.surface_part_bits.get(surface) else {
+            return all;
+        };
+        if anim_iw4::surface_hidden_whole(bits, &hide, base) {
+            return None;
+        }
+        if skel.surface_deformed.get(surface).copied().flatten() != Some(false)
+            || !anim_iw4::surface_hidden(bits, &hide, base)
+        {
+            return all;
+        }
+        let hidden = |v: u32| {
+            skel.vert_skin.get(v as usize).is_some_and(|skin| {
+                anim_iw4::hide_part_bit(&hide, base as usize + usize::from(skin.bones[0]))
+            })
+        };
+        Some(std::borrow::Cow::Owned(
+            indices
+                .chunks_exact(3)
+                .filter(|tri| !tri.iter().any(|&v| hidden(v)))
+                .flatten()
+                .copied()
+                .collect(),
+        ))
+    }
 }
 
 /// bo2zm M3: one model's vertices after skinning.
@@ -142,6 +187,8 @@ fn collect_t6_script_models(
         &Transform,
         &Visibility,
     )>,
+    map_models: Option<Res<asset_world::MapXModelSceneCatalog>>,
+    pieces: Query<(&render_scene::WorldDynEntInstance, &Transform, &Visibility)>,
     mut out: ResMut<T6ScriptModels>,
 ) {
     out.items.clear();
@@ -279,7 +326,10 @@ fn collect_t6_script_models(
         let posed = xanims
             .as_ref()
             .and_then(|x| pose_t6_composition(&fpv.0, &x.0, state, since_snapshot));
+        let hide = *state.hide_part_bits.words();
+        let mut bone_base = 0u32;
         for (i, desc) in state.composition.models.iter().enumerate() {
+            let base = bone_base;
             let Some(entry) = fpv.0.get(asset_core::AssetNamespace::T6, &desc.model) else {
                 // Once per name: a BO2 model the catalog lacks draws nothing.
                 static MISSING: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
@@ -295,6 +345,7 @@ fn collect_t6_script_models(
                 }
                 continue;
             };
+            bone_base += u32::try_from(entry.skel.bones.len()).unwrap_or(0);
             out.items.push(T6MissileModel {
                 skel: entry.skel.clone(),
                 materials: entry
@@ -306,8 +357,56 @@ fn collect_t6_script_models(
                 origin,
                 light_at,
                 posed: posed.as_ref().and_then(|p| p.get(i).cloned().flatten()),
+                hide: hide.iter().any(|w| *w != 0).then_some((hide, base)),
             });
         }
+    }
+    // bo2mp: loose pieces the map's own model list cannot draw (a
+    // mannequin's broken-off head): their BO2 model from the same catalog,
+    // where the piece's physics has it.
+    for (piece, transform, visibility) in &pieces {
+        if piece.dead || matches!(visibility, Visibility::Hidden) {
+            continue;
+        }
+        let drawn_by_map = map_models.as_deref().is_some_and(|map| {
+            !matches!(
+                map.get(&piece.current_model),
+                None | Some(asset_world::MapXModelSceneAsset::Unavailable { .. })
+            )
+        });
+        if drawn_by_map {
+            continue;
+        }
+        let entry = fpv.0.get(asset_core::AssetNamespace::T6, &piece.current_model.0);
+        let origin = transform.translation.to_array();
+        if std::env::var_os("IW4L_T6_HITLOG").is_some() {
+            static SEEN: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+            let n = SEEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            if n % 30 == 0 && n < 600 {
+                diag::info!(
+                    World,
+                    "bo2mp debris {} {} at {origin:?}",
+                    piece.current_model.0,
+                    if entry.is_some() { "draws" } else { "has no model to draw" }
+                );
+            }
+        }
+        let Some(entry) = entry else {
+            continue;
+        };
+        out.items.push(T6MissileModel {
+            skel: entry.skel.clone(),
+            materials: entry
+                .material_edges
+                .iter()
+                .map(|edge| edge.bound_index().map(|i| i as u32))
+                .collect(),
+            world_from_local: transform.to_matrix(),
+            origin,
+            light_at: origin,
+            posed: None,
+            hide: None,
+        });
     }
 }
 
@@ -573,6 +672,7 @@ fn collect_t6_missiles(
             origin,
             light_at: origin,
             posed: None,
+            hide: None,
         });
     }
 }

@@ -52,14 +52,22 @@ impl CollisionBackend for Floor {
 }
 
 /// The floor and a ceiling at `roof` (none at infinity). A `slick` floor is
-/// ice.
+/// ice; a `mantle` floor is a ledge top the player could climb.
 struct Room {
     roof: f32,
     slick: bool,
+    mantle: bool,
 }
 
 impl CollisionBackend for Room {
     fn trace(&self, input: GroundTraceInput) -> Trace {
+        if input.tracemask == movement_iw4::CONTENTS_MANTLE && !self.mantle {
+            return Trace {
+                fraction: 1.0,
+                endpos: input.end,
+                ..Trace::default()
+            };
+        }
         let mut hit = Floor.trace(input);
         if self.slick && hit.walkable != 0 {
             hit.surface_flags = 2;
@@ -105,6 +113,11 @@ fn context(
                 weapon_move_speed_scale: 1.0,
                 weapon_ads_move_speed_scale: 1.0,
                 shellshock_movement_scale: 1.0,
+                prone_lerp_ms: if feel.on {
+                    movement_iw4::PRONE_LERP_MS
+                } else {
+                    0
+                },
             },
             weapon_move_scale: 1.0,
             old_buttons,
@@ -172,6 +185,8 @@ struct Run {
     roof: f32,
     /// The floor is ice.
     slick: bool,
+    /// The floor is a ledge top the player could climb.
+    mantle: bool,
     /// Walking speed scale from a shellshock (1 = none).
     shock: f32,
 }
@@ -195,6 +210,7 @@ impl Run {
             blocks_prone: false,
             roof: f32::INFINITY,
             slick: false,
+            mantle: false,
             shock: 1.0,
         }
     }
@@ -220,6 +236,7 @@ impl Run {
                 &Room {
                     roof: self.roof,
                     slick: self.slick,
+                    mantle: self.mantle,
                 },
                 &FlatMantleAnimLength::default(),
                 &ZeroMantleRootDelta,
@@ -355,7 +372,10 @@ fn a_dive_needs_over_a_quarter_second_of_sprint() {
     early.hold(50, 127, 0, SPRINT | PRONE | STANCE_HELD);
     late.hold(300, 127, 0, SPRINT);
     late.hold(50, 127, 0, SPRINT | PRONE | STANCE_HELD);
-    assert!(!flag(&early, movement_iw4::PMF_DIVE), "0.15 s of sprint is too soon");
+    assert!(
+        !flag(&early, movement_iw4::PMF_DIVE),
+        "0.15 s of sprint is too soon"
+    );
     assert!(flag(&late, movement_iw4::PMF_DIVE), "0.3 s of sprint dives");
 }
 
@@ -457,7 +477,10 @@ fn a_dive_steers_a_little() {
     eprintln!("sideways speed at touch-down: {still:.1} still, {pushed:.1} pushing right");
     assert!(still < 0.01);
     assert!((30.0..=60.0).contains(&pushed), "pushed {pushed}");
-    assert!((pushed_ahead - ahead).abs() < 0.01, "pushing sideways keeps the forward speed");
+    assert!(
+        (pushed_ahead - ahead).abs() < 0.01,
+        "pushing sideways keeps the forward speed"
+    );
 }
 
 #[test]
@@ -500,10 +523,64 @@ fn dive_slides_pauses_then_holds_prone_without_the_prone_lock() {
 }
 
 #[test]
+fn a_slide_that_stops_ends_the_dive_at_once() {
+    let mut run = Run::new(DIVE);
+    dive(&mut run, 127, 0, 0);
+    let landed = run.time;
+    // Stopped dead (into a wall) just after touch-down.
+    run.ps.velocity = [1.0, 0.0, 0.0];
+    run.hold(50, 0, 0, SPRINT);
+    assert!(!movement_iw4::dive_to_prone(&run.ps), "the dive ended");
+    while flag(&run, movement_iw4::PMF_DIVE_SLIDE) {
+        run.hold(50, 0, 0, SPRINT);
+    }
+    assert_eq!(
+        run.ps.dive_end_time,
+        landed + 50,
+        "the next dive counts from the stop"
+    );
+    let held = run.time - landed;
+    eprintln!("stopped slide: free after {held} ms");
+    assert!((150..=200).contains(&held), "only the pause after it");
+}
+
+/// Dives forward and returns the ground speed on the slide's last frame.
+fn slide_end_speed(mantle: bool) -> f32 {
+    let mut run = Run::new(DIVE);
+    run.mantle = mantle;
+    dive(&mut run, 127, 0, 0);
+    let mut speed = 0.0;
+    while movement_iw4::dive_to_prone(&run.ps) {
+        speed = run.ground_speed();
+        run.hold(50, 0, 0, SPRINT);
+    }
+    speed
+}
+
+#[test]
+fn a_slide_over_a_ledge_top_keeps_its_speed() {
+    let floor = slide_end_speed(false);
+    let ledge = slide_end_speed(true);
+    eprintln!("slide's last frame: floor {floor}, ledge top {ledge}");
+    assert!(ledge > floor + 100.0);
+}
+
+#[test]
+fn a_crouch_while_sprinting_only_crouches() {
+    let mut run = Run::new(DIVE);
+    run.hold(1000, 127, 0, SPRINT);
+    run.hold(50, 127, 0, SPRINT | playerstate_iw4::buttons::CROUCH);
+    assert!(!flag(&run, movement_iw4::PMF_DIVE), "no dive on a crouch");
+}
+
+#[test]
 fn scripts_see_the_dive_from_take_off_to_the_slides_end() {
     let mut run = Run::new(DIVE);
     run.hold(1000, 127, 0, SPRINT);
-    assert!(!movement_iw4::dive_to_prone(&run.ps), "sprinting is not diving");
+    assert!(
+        !movement_iw4::dive_to_prone(&run.ps),
+        "sprinting is not diving"
+    );
     run.hold(50, 127, 0, SPRINT | PRONE | STANCE_HELD);
     while flag(&run, movement_iw4::PMF_DIVE) {
         assert!(movement_iw4::dive_to_prone(&run.ps), "in the air");
@@ -517,7 +594,10 @@ fn scripts_see_the_dive_from_take_off_to_the_slides_end() {
     let slide = run.time - landed;
     eprintln!("dive seen on the ground for {slide} ms");
     assert!((250..=300).contains(&slide));
-    assert!(flag(&run, movement_iw4::PMF_DIVE_SLIDE), "the pause still holds him");
+    assert!(
+        flag(&run, movement_iw4::PMF_DIVE_SLIDE),
+        "the pause still holds him"
+    );
 }
 
 #[test]
@@ -556,7 +636,10 @@ fn a_held_prone_key_does_not_drop_you_back_down() {
     run.hold(50, 0, 0, 0);
     assert!(!flag(&run, movement_iw4::PMF_DIVE_GETUP));
     run.hold(1000, 0, 0, held);
-    assert!(flag(&run, playerstate_iw4::pm_flags::PRONE), "prone key works again");
+    assert!(
+        flag(&run, playerstate_iw4::pm_flags::PRONE),
+        "prone key works again"
+    );
 }
 
 #[test]
@@ -583,10 +666,16 @@ fn aiming_works_through_a_dive_with_sprint_held() {
     run.hold(50, 127, 0, SPRINT | PRONE | STANCE_HELD);
     run.hold(50, 127, 0, SPRINT | ADS);
     assert!(flag(&run, movement_iw4::PMF_DIVE));
-    assert!(flag(&run, playerstate_iw4::pm_flags::ADS_INTENT), "aims in the air");
+    assert!(
+        flag(&run, playerstate_iw4::pm_flags::ADS_INTENT),
+        "aims in the air"
+    );
     while !flag(&run, movement_iw4::PMF_DIVE_PRONE) {
         run.hold(50, 127, 0, SPRINT | ADS);
-        assert!(flag(&run, playerstate_iw4::pm_flags::ADS_INTENT), "aims on the ground");
+        assert!(
+            flag(&run, playerstate_iw4::pm_flags::ADS_INTENT),
+            "aims on the ground"
+        );
     }
 }
 
@@ -601,7 +690,10 @@ fn a_prone_toggle_switched_off_gets_you_up() {
         run.hold(50, 0, 0, PRONE);
     }
     run.hold(500, 0, 0, PRONE);
-    assert!(flag(&run, movement_iw4::PMF_DIVE_PRONE), "the latch alone holds prone");
+    assert!(
+        flag(&run, movement_iw4::PMF_DIVE_PRONE),
+        "the latch alone holds prone"
+    );
     run.hold(50, 0, 0, 0);
     ms_to_stand(&mut run, 0);
     assert_eq!(run.ps.pm_flags & 3, 0);
@@ -693,10 +785,18 @@ fn walk_shocked(feel: Bo2Feel, shock_file_movement: f32) -> f32 {
 fn a_shellshock_slows_you_by_its_own_number_in_bo2() {
     // BO2's shock files: explosion and pain 1.0, flashbang 0.8, most 0.4.
     let bo2: Vec<f32> = [1.0, 0.8, 0.4].map(|m| walk_shocked(BO2, m)).to_vec();
-    let old: Vec<f32> = [1.0, 0.8, 0.4].map(|m| walk_shocked(Bo2Feel::IW4, m)).to_vec();
+    let old: Vec<f32> = [1.0, 0.8, 0.4]
+        .map(|m| walk_shocked(Bo2Feel::IW4, m))
+        .to_vec();
     eprintln!("shocked walk: BO2 {bo2:?} old {old:?}");
-    assert!((bo2[0] - 190.0).abs() < 1.0, "an explosion does not slow you");
+    assert!(
+        (bo2[0] - 190.0).abs() < 1.0,
+        "an explosion does not slow you"
+    );
     assert!((bo2[1] - 152.0).abs() < 1.0);
     assert!((bo2[2] - 76.0).abs() < 1.0);
-    assert!(old.iter().all(|s| (s - 76.0).abs() < 1.0), "the old rule: 0.4");
+    assert!(
+        old.iter().all(|s| (s - 76.0).abs() < 1.0),
+        "the old rule: 0.4"
+    );
 }

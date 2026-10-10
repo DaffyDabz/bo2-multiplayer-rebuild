@@ -1453,6 +1453,35 @@ pub fn pose_script_dobj_with_materials(
             surface.model = model as u16;
             drop_hidden_vert_lists(skel, surface, hide, base as u32);
         }
+        // bo2mp test aid (IW4L_T6_HITLOG=1): what a hidden part leaves drawn,
+        // once per model and hide (a broken mannequin keeps body and dress).
+        if hide.iter().any(|w| *w != 0) && std::env::var_os("IW4L_T6_HITLOG").is_some() {
+            static SEEN: std::sync::Mutex<Vec<(String, [u32; 6])>> =
+                std::sync::Mutex::new(Vec::new());
+            let fresh = SEEN.lock().is_ok_and(|mut seen| {
+                let key = (skel.name.clone(), *hide);
+                !seen.contains(&key) && {
+                    seen.push(key);
+                    true
+                }
+            });
+            if fresh {
+                let kept: Vec<(usize, usize)> = posed
+                    .iter()
+                    .map(|s| (s.surface_index, s.mesh.indices().map_or(0, |i| i.len() / 3)))
+                    .collect();
+                diag::info!(
+                    World,
+                    "bo2mp pose {} lod {} hide {:08x?}: surfaces kept (index, tris) {:?} of part bits {:08x?} deformed {:?}",
+                    skel.name,
+                    lod,
+                    hide,
+                    kept,
+                    skel.surface_part_bits.iter().map(|b| b[0]).collect::<Vec<_>>(),
+                    skel.surface_deformed
+                );
+            }
+        }
         for surface in &posed {
             materials.push(
                 catalog.and_then(|catalog| catalog.surface_material(&key, surface.surface_index)),

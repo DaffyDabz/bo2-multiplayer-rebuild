@@ -107,7 +107,7 @@ pub fn pmove<C: CollisionBackend, L: MantleXAnimLength, R: MantleRootDelta>(
         && crate::dive::wants(ps, cmd, context.old_buttons);
     let diving = dive_start || crate::dive::active(ps);
 
-    // bo2zm: the gun can aim through a dive (an owner's ask).
+    // bo2zm: the gun can aim through a dive (an owner's ask, 10-09).
     let ads_cmd = crate::dive::ads_cmd(ps, cmd, diving);
     let _ads = update_ads_intent(ps, &ads_cmd, context.old_buttons, context.ads_intent);
     let mut sprint = context.sprint;
@@ -132,10 +132,8 @@ pub fn pmove<C: CollisionBackend, L: MantleXAnimLength, R: MantleRootDelta>(
     } else {
         // bo2zm: a sprint in any direction (feel.omni), and a held prone key
         // does not end the sprint while getting up from a dive.
-        let sprint_cmd = crate::feel::omni_sprint_cmd(
-            &crate::dive::stance_cmd(ps, cmd),
-            context.walk.feel,
-        );
+        let sprint_cmd =
+            crate::feel::omni_sprint_cmd(&crate::dive::stance_cmd(ps, cmd), context.walk.feel);
         update_sprint(ps, &sprint_cmd, context.old_buttons, sprint)
     };
     crate::feel::jump_out_of_sprint(ps, cmd, context.walk.feel, sprint_before, sprint_change); // bo2zm
@@ -181,7 +179,7 @@ pub fn pmove<C: CollisionBackend, L: MantleXAnimLength, R: MantleRootDelta>(
     let reset_torso = stance_change != crate::StanceChange::Unchanged
         || sprint_change == crate::SprintResult::Started;
     crate::dive::finish_getup(ps, cmd); // bo2zm
-    update_view_height(ps, &pml, cmd);
+    update_view_height(ps, &pml, cmd, context.walk.cmd_scale.prone_lerp_ms);
     let mut bounds = context.bounds;
     bounds.maxs[2] = sync_stance_tail(ps);
 

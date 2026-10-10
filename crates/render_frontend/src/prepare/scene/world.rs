@@ -248,6 +248,10 @@ pub struct WorldScene {
 
     pub t5_sky_dynamic_intensity: Option<[f32; 4]>,
 
+    /// bo2mp: the map's `sm_sunSampleSizeNear` (units per texel of the near
+    /// sun-shadow partition); 0 = not set.
+    pub t6_sun_sample_size_near: f32,
+
     pub t5_tree_scatter_intensity: Option<f32>,
 
     pub t5_tree_scatter_amount: Option<f32>,
@@ -743,6 +747,7 @@ impl WorldScene {
             dir_primary_light: None,
             t5_sun_parse_exposure: None,
             t5_sky_dynamic_intensity: None,
+            t6_sun_sample_size_near: 0.0,
             t5_tree_scatter_intensity: None,
             t5_tree_scatter_amount: None,
             t5_exposure_volume_count: 0,
@@ -840,6 +845,7 @@ impl WorldScene {
             dir_primary_light: None,
             t5_sun_parse_exposure: None,
             t5_sky_dynamic_intensity: None,
+            t6_sun_sample_size_near: 0.0,
             t5_tree_scatter_intensity: None,
             t5_tree_scatter_amount: None,
             t5_exposure_volume_count: 0,

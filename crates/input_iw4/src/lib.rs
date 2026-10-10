@@ -257,6 +257,10 @@ pub struct ClientInput {
 
     pub stance_held: Option<(i32, i32)>,
     pub center_view: bool,
+
+    /// bo2zm: the local player is sprinting at standing height (set each
+    /// frame from the predicted player): the stance button dives when held.
+    pub sprinting: bool,
 }
 
 impl Default for ClientInput {
@@ -271,6 +275,7 @@ impl Default for ClientInput {
             offhand_hold_cancel: false,
             stance_held: None,
             center_view: false,
+            sprinting: false,
         }
     }
 }
@@ -373,6 +378,10 @@ pub fn input_cmd(client: &mut ClientInput, cmd_id: u32, key: i32, now_msec: i32,
 
 const STANCE_HOLD_MS: i32 = 300;
 
+/// bo2zm: held this long while sprinting, the stance button dives
+/// (Black Ops II's cl_dtpHoldTime).
+const DTP_HOLD_MS: i32 = 200;
+
 fn stance_button(client: &mut ClientInput, down: bool, now_msec: i32) {
     if client.kb.prone.active || client.kb.movedown.active {
         return;
@@ -380,6 +389,18 @@ fn stance_button(client: &mut ClientInput, down: bool, now_msec: i32) {
     let crouch = buttons::CROUCH as i32;
     if down {
         client.stance_held = Some((client.stance_latch, now_msec));
+        // bo2zm: while sprinting the press waits: held, it dives; let go
+        // first, it crouches.
+        if !client.sprinting {
+            client.stance_latch = crouch;
+        }
+    } else if client
+        .stance_held
+        .is_some_and(|(from, _)| from != crouch && client.stance_latch == from)
+    {
+        // The press waited (sprinting) and was let go first: crouch, even if
+        // the sprint ended meanwhile.
+        client.stance_held = None;
         client.stance_latch = crouch;
     } else if let Some((from, _)) = client.stance_held.take()
         && from == crouch
@@ -392,8 +413,15 @@ fn stance_hold(client: &mut ClientInput, now_msec: i32) {
     let Some((from, since)) = client.stance_held else {
         return;
     };
-    if now_msec.wrapping_sub(since) >= STANCE_HOLD_MS {
-        let prone = buttons::PRONE as i32;
+    let held = now_msec.wrapping_sub(since);
+    let prone = buttons::PRONE as i32;
+    if client.sprinting {
+        // bo2zm: prone while sprinting is the dive.
+        if held >= DTP_HOLD_MS {
+            client.stance_latch = prone;
+            client.stance_held = None;
+        }
+    } else if held >= STANCE_HOLD_MS {
         client.stance_latch = if from == prone { 0 } else { prone };
         client.stance_held = None;
     }
@@ -602,3 +630,64 @@ fn movement_key_state(btn: &mut Kbutton, now_msec: i32, frame_msec: u32) -> f32 
 }
 
 pub const CMD_RING_MASK: u32 = 0x7f;
+
+#[cfg(test)]
+mod bo2_stance_tests {
+    use super::*;
+
+    const CROUCH: i32 = buttons::CROUCH as i32;
+    const PRONE: i32 = buttons::PRONE as i32;
+
+    fn sprinting() -> ClientInput {
+        ClientInput {
+            sprinting: true,
+            ..ClientInput::default()
+        }
+    }
+
+    #[test]
+    fn held_200_ms_while_sprinting_the_stance_button_dives() {
+        let mut client = sprinting();
+        stance_button(&mut client, true, 1000);
+        assert_eq!(client.stance_latch, 0, "no crouch while it waits");
+        stance_hold(&mut client, 1150);
+        assert_eq!(client.stance_latch, 0);
+        stance_hold(&mut client, 1200);
+        assert_eq!(
+            client.stance_latch, PRONE,
+            "prone while sprinting = the dive"
+        );
+    }
+
+    #[test]
+    fn tapped_while_sprinting_the_stance_button_crouches_on_release() {
+        let mut client = sprinting();
+        stance_button(&mut client, true, 1000);
+        stance_hold(&mut client, 1100);
+        stance_button(&mut client, false, 1100);
+        assert_eq!(client.stance_latch, CROUCH);
+        stance_hold(&mut client, 1500);
+        assert_eq!(client.stance_latch, CROUCH, "no late prone");
+    }
+
+    #[test]
+    fn a_tap_crouches_even_if_the_sprint_ends_first() {
+        let mut client = sprinting();
+        stance_button(&mut client, true, 1000);
+        client.sprinting = false;
+        stance_hold(&mut client, 1100);
+        stance_button(&mut client, false, 1100);
+        assert_eq!(client.stance_latch, CROUCH);
+    }
+
+    #[test]
+    fn not_sprinting_the_stance_button_keeps_its_300_ms_prone_hold() {
+        let mut client = ClientInput::default();
+        stance_button(&mut client, true, 1000);
+        assert_eq!(client.stance_latch, CROUCH);
+        stance_hold(&mut client, 1250);
+        assert_eq!(client.stance_latch, CROUCH);
+        stance_hold(&mut client, 1300);
+        assert_eq!(client.stance_latch, PRONE);
+    }
+}

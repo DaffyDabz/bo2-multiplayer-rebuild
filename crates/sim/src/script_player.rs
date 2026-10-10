@@ -82,6 +82,14 @@ pub(crate) fn spawn(
         meta.lifecycle = lifecycle;
         meta.controls.switch_to = 0;
         meta.controls.linked = false;
+        // Black Ops II's spawn clears the player state, and with it the
+        // allow* switches (they live in its movement flags).
+        meta.controls.prone_disabled = false;
+        meta.controls.crouch_disabled = false;
+        meta.controls.stand_disabled = false;
+        meta.controls.sprint_disabled = false;
+        meta.controls.melee_disabled = false;
+        meta.controls.ads_disabled = false;
         if lifecycle != ClientLifecycle::Alive {
             return;
         }
@@ -254,11 +262,14 @@ pub(crate) enum Finish {
     Killed,
 }
 
+/// `bo2` = Black Ops II's hit flinch and wider aim, sized by the share of
+/// health the frame's hits took (else one small flinch a hit).
 pub(crate) fn finish_damage(
     world: &mut FrameWorld,
     id: ClientId,
     amount: i32,
     dir: Option<[f32; 3]>,
+    bo2: bool,
 ) -> Finish {
     if !world
         .client_meta(id)
@@ -266,18 +277,23 @@ pub(crate) fn finish_damage(
     {
         return Finish::Hurt;
     }
+    if bo2 {
+        bo2_damage_feedback(world, id, amount, dir);
+    }
     let Some(ps) = world.player_mut(id) else {
         return Finish::Hurt;
     };
     movement_iw4::update_damage_timer(ps, amount, dir);
     ps.health = (ps.health - amount.max(0)).max(0);
-    ps.damage_count = ps.damage_count.saturating_add(1);
-    ps.damage_event = ps.damage_event.wrapping_add(1);
-    // Where the hit came from (the HUD's damage direction): the yaw back
-    // along the damage's travel, as a byte angle (256 = a full turn).
-    if let Some(d) = dir.filter(|d| d[0] != 0.0 || d[1] != 0.0) {
-        let yaw = math_iw4::vec_to_yaw(-d[0], -d[1]);
-        ps.damage_yaw = ((yaw * 256.0 / 360.0) as u32) & 255;
+    if !bo2 {
+        ps.damage_count = ps.damage_count.saturating_add(1);
+        ps.damage_event = ps.damage_event.wrapping_add(1);
+        // The HUD's damage direction: the hit's travel as a byte angle
+        // (256 = a full turn), as Black Ops II sends it.
+        if let Some(d) = dir.filter(|d| d[0] != 0.0 || d[1] != 0.0) {
+            let yaw = math_iw4::vec_to_yaw(d[0], d[1]);
+            ps.damage_yaw = ((yaw * 256.0 / 360.0) as u32) & 255;
+        }
     }
     if ps.health > 0 {
         return Finish::Hurt;
@@ -291,6 +307,37 @@ pub(crate) fn finish_damage(
         return Finish::LastStand;
     }
     Finish::Killed
+}
+
+/// bo2zm: Black Ops II sends one flinch a frame for all of that frame's
+/// hits: their share of his max health and the last hit's direction. The
+/// same share widens his aim.
+fn bo2_damage_feedback(world: &mut FrameWorld, id: ClientId, amount: i32, dir: Option<[f32; 3]>) {
+    let frame = world.entity_kernel().frame_serial();
+    let meta = world.client_meta_mut(id);
+    if meta.hit_frame != Some(frame) {
+        meta.hit_frame = Some(frame);
+        meta.hit_blood = 0;
+        meta.hit_sent = None;
+    }
+    meta.hit_blood = meta.hit_blood.saturating_add(amount.max(0));
+    let (blood, sent) = (meta.hit_blood, meta.hit_sent);
+    let Some(ps) = world.player_mut(id) else {
+        return;
+    };
+    let Some((count, yaw, pitch)) = weapon_iw4::damage_feedback_bo2(blood, ps.max_health, dir)
+    else {
+        return;
+    };
+    let widen = (count - sent.unwrap_or(0)) as f32;
+    ps.aim_spread_scale = (ps.aim_spread_scale + widen).min(weapon_iw4::BO2_AIM_SPREAD_MAX);
+    if sent.is_none() {
+        ps.damage_event = ps.damage_event.wrapping_add(1);
+    }
+    ps.damage_count = count;
+    ps.damage_yaw = yaw;
+    ps.damage_pitch = pitch;
+    world.client_meta_mut(id).hit_sent = Some(count);
 }
 
 pub(crate) fn revive(world: &mut FrameWorld, id: ClientId) {
@@ -751,6 +798,10 @@ fn perk_bits(name: &str) -> (u32, u32) {
         "specialty_fastads" => movement_iw4::PERK_FASTADS,
         "specialty_fastmantle" => movement_iw4::PERK_FASTMANTLE,
         "specialty_longersprint" => movement_iw4::PERK_LONGERSPRINT,
+        "specialty_bulletflinch" => weapon_iw4::PERK_BULLETFLINCH,
+        "specialty_movefaster" => movement_iw4::PERK_MOVEFASTER,
+        "specialty_sprintrecovery" => weapon_iw4::PERK_SPRINTRECOVERY,
+        "specialty_unlimitedsprint" => movement_iw4::PERK_MARATHON,
         _ => 0,
     };
     let e_flags = match name {
@@ -847,10 +898,57 @@ pub(crate) fn apply_allow_controls(
     }
 }
 
+/// bo2zm: Black Ops II Zombies' stance rule when scripts disallow a stance
+/// (the TranZit bus, Mob's afterlife, Origins' tank and claw): the stance he
+/// asks for becomes the nearest allowed one, by the stance he is in now. No
+/// prone also means no dive (the dive starts on a prone press).
+pub(crate) fn bo2_zombies_stance(
+    controls: &crate::match_state::ScriptControls,
+    pm_flags: u32,
+    cmd: &mut playerstate_iw4::UserCmd,
+) {
+    use playerstate_iw4::{buttons, pm_flags as pmf};
+    let stand_off = controls.stand_disabled;
+    let crouch_off = controls.crouch_disabled;
+    let prone_off = controls.prone_disabled;
+    let prone = pm_flags & pmf::PRONE != 0;
+    let down = pm_flags & (pmf::PRONE | pmf::CROUCH) != 0;
+    let to = if cmd.buttons & buttons::PRONE != 0 {
+        if !prone_off {
+            return;
+        }
+        if (!down && !stand_off) || crouch_off {
+            0
+        } else {
+            buttons::CROUCH
+        }
+    } else if cmd.buttons & buttons::CROUCH != 0 {
+        if !crouch_off {
+            return;
+        }
+        if (down || prone_off) && !stand_off {
+            0
+        } else {
+            buttons::PRONE
+        }
+    } else {
+        if !stand_off {
+            return;
+        }
+        if (!prone || prone_off) && !crouch_off {
+            buttons::CROUCH
+        } else {
+            buttons::PRONE
+        }
+    };
+    cmd.buttons = cmd.buttons & !(buttons::PRONE | buttons::CROUCH) | to;
+}
+
 pub(crate) fn constrain_cmd(
     world: &mut FrameWorld,
     id: ClientId,
     cmd: &mut playerstate_iw4::UserCmd,
+    zombies: bool,
 ) {
     use playerstate_iw4::buttons;
     let held = world.player(id).map_or(0, |ps| ps.weapon);
@@ -886,7 +984,11 @@ pub(crate) fn constrain_cmd(
     if controls.jump_disabled {
         cmd.buttons &= !buttons::JUMP;
     }
-    apply_allow_controls(&controls, world.player(id).map_or(0, |ps| ps.pm_flags), cmd);
+    let pm_flags = world.player(id).map_or(0, |ps| ps.pm_flags);
+    if zombies {
+        bo2_zombies_stance(&controls, pm_flags, cmd);
+    }
+    apply_allow_controls(&controls, pm_flags, cmd);
     if controls.weapons_disabled {
         cmd.buttons &= !(buttons::ATTACK | buttons::THROW | buttons::ADS | buttons::MELEE_CHARGE);
     }
@@ -963,5 +1065,162 @@ mod allow_controls_tests {
         let mut c = cmd(buttons::CROUCH);
         apply_allow_controls(&controls, 0, &mut c);
         assert_eq!(c.buttons, buttons::CROUCH);
+    }
+}
+
+#[cfg(test)]
+mod bo2_hit_tests {
+    use super::*;
+
+    #[test]
+    fn bo2_perks_have_their_own_bits() {
+        assert_eq!(perk_bits("specialty_movefaster").0, 1 << 9);
+        assert_eq!(perk_bits("specialty_sprintrecovery").0, 1 << 10);
+        assert_eq!(perk_bits("specialty_unlimitedsprint").0, movement_iw4::PERK_MARATHON);
+    }
+
+    #[test]
+    fn a_frames_hits_send_one_flinch_sized_by_their_share() {
+        let mut sim = crate::carrier::SimWorld::default();
+        let mut world = sim.frame();
+        let id = ClientId(0);
+        world.client_meta_mut(id).lifecycle = ClientLifecycle::Alive;
+        let ps = world.ensure_player(id);
+        ps.max_health = 150;
+        ps.health = 150;
+        ps.aim_spread_scale = 0.0;
+        let event = ps.damage_event;
+        // Two hits in one frame: one flinch for 45 of 150 health (30
+        // percent), along the last hit's travel (+y = yaw byte 64).
+        world.entity_kernel_mut().begin_frame(50);
+        finish_damage(&mut world, id, 15, Some([1.0, 0.0, 0.0]), true);
+        finish_damage(&mut world, id, 30, Some([0.0, 1.0, 0.0]), true);
+        let ps = world.player(id).unwrap();
+        assert_eq!(ps.damage_event, event.wrapping_add(1));
+        assert_eq!((ps.damage_count, ps.damage_yaw, ps.damage_pitch), (30, 64, 0));
+        assert_eq!(ps.aim_spread_scale, 30.0);
+        assert_eq!(ps.health, 105);
+        // The next frame's hit is a flinch of its own; no direction = 255/255.
+        world.entity_kernel_mut().begin_frame(100);
+        finish_damage(&mut world, id, 3, None, true);
+        let ps = world.player(id).unwrap();
+        assert_eq!(ps.damage_event, event.wrapping_add(2));
+        assert_eq!((ps.damage_count, ps.damage_yaw, ps.damage_pitch), (2, 255, 255));
+        assert_eq!(ps.aim_spread_scale, 32.0);
+        // MW2's rules: one small flinch a hit.
+        finish_damage(&mut world, id, 3, None, false);
+        assert_eq!(world.player(id).unwrap().damage_event, event.wrapping_add(3));
+    }
+}
+
+#[cfg(test)]
+mod bo2_zombies_stance_tests {
+    use super::{apply_allow_controls, bo2_zombies_stance};
+    use crate::match_state::ScriptControls;
+    use playerstate_iw4::{UserCmd, buttons, pm_flags};
+
+    const STAND: u32 = 0;
+    const CROUCH: u32 = buttons::CROUCH;
+    const PRONE: u32 = buttons::PRONE;
+
+    /// What he asks for, in the stance he is in, comes out as (Zombies' rule,
+    /// then MP's drop as constrain_cmd runs them).
+    fn stance(off: (bool, bool, bool), now: u32, asks: u32) -> u32 {
+        let controls = ScriptControls {
+            stand_disabled: off.0,
+            crouch_disabled: off.1,
+            prone_disabled: off.2,
+            ..Default::default()
+        };
+        let mut c = UserCmd::default();
+        c.buttons = asks | buttons::SPRINT;
+        bo2_zombies_stance(&controls, now, &mut c);
+        apply_allow_controls(&controls, now, &mut c);
+        assert_ne!(c.buttons & buttons::SPRINT, 0, "only the stance changes");
+        c.buttons & (buttons::PRONE | buttons::CROUCH)
+    }
+
+    const NO_PRONE: (bool, bool, bool) = (false, false, true);
+    const NO_CROUCH: (bool, bool, bool) = (false, true, false);
+    const NO_STAND: (bool, bool, bool) = (true, false, false);
+    const ONLY_PRONE: (bool, bool, bool) = (true, true, false);
+    const ONLY_CROUCH: (bool, bool, bool) = (true, false, true);
+    const ONLY_STAND: (bool, bool, bool) = (false, true, true);
+
+    #[test]
+    fn only_zombies_moves_him_past_the_crouch() {
+        // constrain_cmd runs Zombies' rule in Zombies only; MP drops the press.
+        for (zombies, want) in [(true, PRONE), (false, STAND)] {
+            let mut sim = crate::carrier::SimWorld::default();
+            let mut world = sim.frame();
+            let id = crate::world::ClientId(0);
+            world.client_meta_mut(id).controls.crouch_disabled = true;
+            let mut c = UserCmd::default();
+            c.buttons = CROUCH;
+            super::constrain_cmd(&mut world, id, &mut c, zombies);
+            assert_eq!(c.buttons & (PRONE | CROUCH), want, "zombies {zombies}");
+        }
+    }
+
+    #[test]
+    fn all_allowed_changes_nothing() {
+        for now in [0, pm_flags::CROUCH, pm_flags::PRONE] {
+            for asks in [STAND, CROUCH, PRONE] {
+                assert_eq!(stance((false, false, false), now, asks), asks);
+            }
+        }
+    }
+
+    #[test]
+    fn no_prone_keeps_him_standing_or_crouched() {
+        // The TranZit bus: a prone press (or a dive) while standing stays standing.
+        assert_eq!(stance(NO_PRONE, 0, PRONE), STAND);
+        // Crouched, a prone press stays crouched (MP's plain drop would stand him up).
+        assert_eq!(stance(NO_PRONE, pm_flags::CROUCH, PRONE), CROUCH);
+        // Prone when it was turned off: the prone button now crouches him.
+        assert_eq!(stance(NO_PRONE, pm_flags::PRONE, PRONE), CROUCH);
+        assert_eq!(stance(ONLY_STAND, pm_flags::CROUCH, PRONE), STAND);
+        assert_eq!(stance(NO_PRONE, 0, CROUCH), CROUCH);
+    }
+
+    #[test]
+    fn no_crouch_moves_him_past_the_crouch() {
+        // Standing, a crouch press goes on down to prone; down already, it stands.
+        assert_eq!(stance(NO_CROUCH, 0, CROUCH), PRONE);
+        assert_eq!(stance(NO_CROUCH, pm_flags::PRONE, CROUCH), STAND);
+        assert_eq!(stance(ONLY_PRONE, 0, CROUCH), PRONE);
+        assert_eq!(stance(ONLY_STAND, 0, CROUCH), STAND);
+    }
+
+    #[test]
+    fn no_stand_keeps_him_down() {
+        assert_eq!(stance(NO_STAND, 0, STAND), CROUCH);
+        assert_eq!(stance(NO_STAND, pm_flags::PRONE, STAND), PRONE);
+        assert_eq!(stance(ONLY_CROUCH, pm_flags::PRONE, STAND), CROUCH);
+        assert_eq!(stance(ONLY_PRONE, 0, STAND), PRONE);
+        assert_eq!(stance(NO_STAND, 0, CROUCH), CROUCH);
+    }
+
+    #[test]
+    fn a_spawn_allows_everything_again() {
+        let mut sim = crate::carrier::SimWorld::default();
+        let mut world = sim.frame();
+        let id = crate::world::ClientId(0);
+        world.client_meta_mut(id).controls = ScriptControls {
+            stand_disabled: true,
+            crouch_disabled: true,
+            prone_disabled: true,
+            sprint_disabled: true,
+            melee_disabled: true,
+            ads_disabled: true,
+            jump_disabled: true,
+            ..Default::default()
+        };
+        super::spawn(&mut world, crate::world::Tick(1), id, [0.0; 3], [0.0; 3], "playing");
+        let jump_only = ScriptControls {
+            jump_disabled: true,
+            ..Default::default()
+        };
+        assert_eq!(world.client_meta(id).unwrap().controls, jump_only);
     }
 }

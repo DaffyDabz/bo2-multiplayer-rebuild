@@ -5,7 +5,7 @@ use crate::placement::{
     WeaponIdleInputs, WeaponPlacementPsInputs, weapon_bob_ads_attenuation,
     weapon_idle_amount_speed,
 };
-use math_iw4::{angle_vectors, get_lean_fraction};
+use math_iw4::{angle_vectors, get_lean_fraction, vect_to_angles};
 use playerstate_iw4::{eflags, pm_flags};
 
 pub const VIEW_BOB_MAX: f32 = 8.0;
@@ -493,6 +493,99 @@ pub fn damage_feedback_kick_min(
     }
 }
 
+/// bo2zm: Black Ops II's hit flinch per percent of health a frame's hits
+/// took (its bg_viewKickScale).
+pub const BG_VIEW_KICK_SCALE_BO2: f32 = 0.175;
+
+/// bo2zm: the share of the hit flinch Toughness leaves
+/// (perk_damageKickReduction).
+pub const PERK_DAMAGE_KICK_REDUCTION: f32 = 0.25;
+
+/// bo2zm: Toughness (specialty_bulletflinch), its bit in perks[0].
+pub const PERK_BULLETFLINCH: u32 = 1 << 5;
+
+/// bo2zm: the most hits can widen the aim (aimSpreadScale's top).
+pub const BO2_AIM_SPREAD_MAX: f32 = 255.0;
+
+/// bo2zm: the most a frame's hits count for, in percent of health.
+const BO2_DAMAGE_COUNT_MAX: i32 = 127;
+
+const VIEW_DAMAGE_DEGREES_TO_TURNS: f32 = 0.002_777_777_8;
+
+const VIEW_DAMAGE_BYTE_TURN: f32 = 256.0;
+
+/// bo2zm: Black Ops II's hit flinch size: 0.175 a percent of health,
+/// a quarter of that with Toughness, kept between 0.5 and 90 degrees.
+pub fn view_kick_amplitude_bo2(damage_count: i32, bullet_flinch: bool) -> f32 {
+    let mut kick = damage_count as f32 * BG_VIEW_KICK_SCALE_BO2;
+    if bullet_flinch {
+        kick *= PERK_DAMAGE_KICK_REDUCTION;
+    }
+    if kick < BG_VIEW_KICK_MIN_BO2 {
+        BG_VIEW_KICK_MIN_BO2
+    } else if kick > BG_VIEW_KICK_MAX {
+        BG_VIEW_KICK_MAX
+    } else {
+        kick
+    }
+}
+
+/// bo2zm: Black Ops II's hit flinch from the hit's travel direction (yaw
+/// and pitch bytes). 255/255 = no direction: the view tips up. 0/0 keeps
+/// the last flinch's angles (None); the flinch still restarts. The roll
+/// leans the other way from MW2's.
+pub fn damage_feedback_kick_bo2(
+    yaw_byte: u32,
+    pitch_byte: u32,
+    damage_count: i32,
+    viewangles: [f32; 3],
+    bullet_flinch: bool,
+) -> Option<ViewDamageFeedback> {
+    let kick = view_kick_amplitude_bo2(damage_count, bullet_flinch);
+    if yaw_byte == VIEW_DAMAGE_UNDIRECTED && pitch_byte == VIEW_DAMAGE_UNDIRECTED {
+        return Some(ViewDamageFeedback {
+            v_dmg_pitch: -kick,
+            v_dmg_roll: 0.0,
+        });
+    }
+    if yaw_byte == 0 && pitch_byte == 0 {
+        return None;
+    }
+    let pitch = (pitch_byte as f32 / VIEW_DAMAGE_BYTE) * VIEW_DAMAGE_TURN;
+    let yaw = (yaw_byte as f32 / VIEW_DAMAGE_BYTE) * VIEW_DAMAGE_TURN;
+    let (dir, _, _) = angle_vectors([pitch, yaw, 0.0]);
+    let (forward, right, _) = angle_vectors(viewangles);
+    let side = dir[0] * right[0] + dir[1] * right[1] + dir[2] * right[2];
+    let fwd = dir[0] * forward[0] + dir[1] * forward[1] + dir[2] * forward[2];
+    Some(ViewDamageFeedback {
+        v_dmg_pitch: kick * fwd,
+        v_dmg_roll: kick * side,
+    })
+}
+
+/// bo2zm: what Black Ops II sends for a frame's hits: the share of max
+/// health they took in percent (at most 127), and the last hit's travel
+/// direction as yaw and pitch bytes (255/255 with no direction). None
+/// when there is nothing to send.
+pub fn damage_feedback_bo2(
+    blood: i32,
+    max_health: i32,
+    dir: Option<[f32; 3]>,
+) -> Option<(i32, u32, u32)> {
+    if blood < 1 || max_health < 1 {
+        return None;
+    }
+    let count = (blood.saturating_mul(100) / max_health).min(BO2_DAMAGE_COUNT_MAX);
+    let Some(dir) = dir else {
+        return Some((count, VIEW_DAMAGE_UNDIRECTED, VIEW_DAMAGE_UNDIRECTED));
+    };
+    let angles = vect_to_angles(dir);
+    let byte = |angle: f32| {
+        ((angle * VIEW_DAMAGE_DEGREES_TO_TURNS * VIEW_DAMAGE_BYTE_TURN) as i32 as u32) & 0xff
+    };
+    Some((count, byte(angles[1]), byte(angles[0])))
+}
+
 fn view_damage_kick(angles: &mut ViewAngleBob, inputs: ViewAngleBobInputs) {
     if inputs.damage_time == 0 {
         return;
@@ -593,6 +686,53 @@ pub fn view_angle_bob(inputs: ViewAngleBobInputs) -> ViewAngleBob {
 #[cfg(test)]
 mod bo2_tests {
     use super::*;
+
+    #[test]
+    fn a_hit_flinches_by_its_share_of_health() {
+        // 0.175 a percent: 40 of 100 health = 7 degrees.
+        assert!((view_kick_amplitude_bo2(40, false) - 7.0).abs() < 1e-5);
+        // Toughness leaves a quarter.
+        assert!((view_kick_amplitude_bo2(40, true) - 1.75).abs() < 1e-5);
+        // At least 0.5, at most 90.
+        assert_eq!(view_kick_amplitude_bo2(1, false), 0.5);
+        assert_eq!(view_kick_amplitude_bo2(1, true), 0.5);
+        assert_eq!(view_kick_amplitude_bo2(127, false), 127.0 * 0.175);
+        assert_eq!(view_kick_amplitude_bo2(1000, false), 90.0);
+    }
+
+    #[test]
+    fn a_hit_rolls_the_view_like_bo2() {
+        // Looking along +x; a hit travelling +y (yaw byte 64, about 90.4).
+        let hit = damage_feedback_kick_bo2(64, 0, 40, [0.0; 3], false).unwrap();
+        assert!((hit.v_dmg_roll + 7.0).abs() < 0.01, "{hit:?}");
+        assert!(hit.v_dmg_pitch.abs() < 0.1, "{hit:?}");
+        // MW2 rolls the other way.
+        let mw2 = damage_feedback_kick(64, 0, 35, [0.0; 3]);
+        assert!(mw2.v_dmg_roll > 6.9, "{mw2:?}");
+        // A hit travelling the way he looks (yaw byte 0, pitch byte 1).
+        let ahead = damage_feedback_kick_bo2(0, 1, 40, [0.0; 3], false).unwrap();
+        assert!((ahead.v_dmg_pitch - 7.0).abs() < 0.01, "{ahead:?}");
+        // No direction: the view tips up by the whole flinch.
+        let none = damage_feedback_kick_bo2(255, 255, 40, [0.0; 3], true).unwrap();
+        assert_eq!((none.v_dmg_pitch, none.v_dmg_roll), (-1.75, 0.0));
+        // 0/0 keeps the last flinch's angles.
+        assert_eq!(damage_feedback_kick_bo2(0, 0, 40, [0.0; 3], false), None);
+    }
+
+    #[test]
+    fn the_server_sends_the_share_and_the_travel_direction() {
+        // 30 of 150 health = 20 percent, travelling +y = yaw 90 = byte 64.
+        assert_eq!(damage_feedback_bo2(30, 150, Some([0.0, 1.0, 0.0])), Some((20, 64, 0)));
+        // Travelling -x and 45 degrees down: yaw 180 = 128, pitch 45 = 32.
+        assert_eq!(damage_feedback_bo2(10, 100, Some([-1.0, 0.0, -1.0])), Some((10, 128, 32)));
+        // At most 127 percent; no direction = 255/255.
+        assert_eq!(damage_feedback_bo2(500, 100, None), Some((127, 255, 255)));
+        // A share under one percent still counts as a hit.
+        assert_eq!(damage_feedback_bo2(1, 250, None), Some((0, 255, 255)));
+        // No damage or no max health: nothing.
+        assert_eq!(damage_feedback_bo2(0, 100, None), None);
+        assert_eq!(damage_feedback_bo2(10, 0, None), None);
+    }
 
     #[test]
     fn landing_dip_drops_the_fraction_in_bo2() {

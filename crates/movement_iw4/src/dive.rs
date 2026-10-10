@@ -1,8 +1,8 @@
 //! bo2zm: Black Ops II's dive to prone (the "dolphin dive"). Not part of
 //! upstream IW4L.
 //!
-//! While sprinting on the ground, pressing prone (or a pad's stance button)
-//! throws the player out the way they are pushing, any direction, at the
+//! While sprinting on the ground, pressing prone (or holding a pad's stance
+//! button a moment) throws the player out the way they are pushing, any direction, at the
 //! speed they ran. The dive pops up to jump height, holds it a moment, then
 //! drops; on touch-down the player slides on their front into prone and
 //! holds still a moment. They stay prone until they press jump, crouch,
@@ -20,6 +20,9 @@
 //! animation (`pb_dive_prone`, 22 frames at 30 = 0.733 s from take-off to
 //! touch-down; common_zm). As in BO2 the player can steer a little through
 //! the flight and the slide: air control at 0.4 of the usual wish speed.
+//! A slide that comes to a stop (into a wall) ends the dive at once, and over
+//! a ledge top the player could climb (mantle ground) it keeps its speed to
+//! the end.
 //!
 //! State rides in the replicated player state, so the host and the local
 //! prediction agree: `PMF_DIVE` in the air, `PMF_DIVE_SLIDE` from touch-down
@@ -31,8 +34,8 @@
 use playerstate_iw4::{ENTITYNUM_NONE, PlayerState, UserCmd, buttons, pm_flags};
 
 use crate::{
-    CollisionBackend, MoveBounds, Pml, add_predictable_event, end_sprint, player_prone_allowed,
-    step_slide_move, view_height,
+    CONTENTS_MANTLE, CollisionBackend, GroundTraceInput, MoveBounds, Pml, add_predictable_event,
+    end_sprint, player_prone_allowed, step_slide_move, view_height,
 };
 
 /// In the air, diving.
@@ -107,13 +110,9 @@ pub fn wants(ps: &PlayerState, cmd: &UserCmd, old_buttons: u32) -> bool {
     {
         return false;
     }
-    // Prone newly pressed; or a stance toggle newly crouching (a pad's
-    // stance button, as console BO2 dives on it; a held keyboard crouch
-    // carries STANCE_HELD and only crouches).
-    let new = cmd.buttons & !old_buttons;
-    let prone = new & buttons::PRONE != 0;
-    let pad_stance = new & buttons::CROUCH != 0 && cmd.buttons & buttons::STANCE_HELD == 0;
-    if !prone && !pad_stance {
+    // Prone newly pressed. A pad's stance button sends prone once held
+    // `cl_dtpHoldTime` while sprinting (input_iw4); a crouch only crouches.
+    if (cmd.buttons & !old_buttons) & buttons::PRONE == 0 {
         return false;
     }
     if cmd.server_time.wrapping_sub(ps.last_sprint_start) <= STARTUP_MS {
@@ -236,7 +235,7 @@ pub fn advance<C: CollisionBackend>(
     jump_height: f32,
     spectate_speed_scale: f32,
 ) {
-    let elapsed = cmd.server_time.wrapping_sub(ps.jump_time);
+    let mut elapsed = cmd.server_time.wrapping_sub(ps.jump_time);
     let gravity = ps.gravity as f32;
     let dt = pml.frametime.max(0.001);
     if ps.pm_flags & PMF_DIVE != 0 {
@@ -255,6 +254,13 @@ pub fn advance<C: CollisionBackend>(
         slide(ps, pml, collision, bounds, Some(gravity));
         return;
     }
+    if elapsed < SLIDE_MS && speed_3d(ps) < MIN_SPEED {
+        // BO2: a slide that has stopped (into a wall) ends the dive now; the
+        // pause starts from here.
+        ps.jump_time = cmd.server_time.wrapping_sub(SLIDE_MS);
+        ps.velocity = [0.0; 3];
+        elapsed = SLIDE_MS;
+    }
     let pausing = elapsed >= SLIDE_MS;
     if pml.walking == 0 {
         // Slid off an edge: fall.
@@ -268,7 +274,11 @@ pub fn advance<C: CollisionBackend>(
     let next = if pausing {
         0.0
     } else {
-        let ramp = (elapsed.max(0) as f32 / SLIDE_MS as f32).min(1.0);
+        let ramp = if on_mantle_ground(ps, collision, bounds) {
+            0.0
+        } else {
+            (elapsed.max(0) as f32 / SLIDE_MS as f32).min(1.0)
+        };
         let control = speed.max(SLIDE_STOP_SPEED);
         (speed - control * SLIDE_FRICTION * ramp * dt).max(0.0)
     };
@@ -291,6 +301,31 @@ pub fn advance<C: CollisionBackend>(
     if ps.velocity[0] != 0.0 || ps.velocity[1] != 0.0 {
         slide(ps, pml, collision, bounds, None);
     }
+}
+
+fn speed_3d(ps: &PlayerState) -> f32 {
+    let v = ps.velocity;
+    libm::sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+}
+
+/// BO2: over ground the player could mantle (a ledge top), the slide has no
+/// friction until it ends.
+fn on_mantle_ground<C: CollisionBackend>(
+    ps: &PlayerState,
+    collision: &C,
+    bounds: MoveBounds,
+) -> bool {
+    let o = ps.origin;
+    collision
+        .trace(GroundTraceInput {
+            start: [o[0], o[1], o[2] + 1.0],
+            end: [o[0], o[1], o[2] - 1.0],
+            mins: bounds.mins,
+            maxs: bounds.maxs,
+            tracemask: CONTENTS_MANTLE,
+        })
+        .fraction
+        < 1.0
 }
 
 fn slide<C: CollisionBackend>(

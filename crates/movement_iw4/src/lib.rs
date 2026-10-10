@@ -11,10 +11,10 @@ mod collision;
 mod correct_solid;
 mod crash;
 mod dive; // bo2zm
-mod feel; // bo2zm
 mod dmgtimer;
 mod drop_timers;
 mod events;
+mod feel; // bo2zm
 mod footstep;
 mod friction;
 mod ground;
@@ -43,24 +43,24 @@ pub use cmdscale::{CmdScaleWalkContext, cmd_scale_walk};
 pub use collision::CollisionBackend;
 pub use correct_solid::{BG_CORRECT_SOLID_DELTAS, CorrectSolidOutcome, correct_solid};
 pub use crash::{crash_land, crash_land_fall_height};
+pub use dive::{PMF_DIVE, PMF_DIVE_GETUP, PMF_DIVE_PRONE, PMF_DIVE_SLIDE, dive_to_prone}; // bo2zm
 pub use dmgtimer::{
     ANIM_MT_FLINCH_FORWARD, PLAYER_DMGTIMER_FLINCH_TIME_MS, PLAYER_DMGTIMER_MAX_TIME,
     PLAYER_DMGTIMER_MIN_SCALE, PLAYER_DMGTIMER_STUMBLE_TIME_MS, PLAYER_DMGTIMER_TIME_PER_POINT,
     damage_scale_walk, damage_window_open, update_damage_timer, walk_move_drop_damage_timer,
 };
-pub use dive::{PMF_DIVE, PMF_DIVE_GETUP, PMF_DIVE_PRONE, PMF_DIVE_SLIDE, dive_to_prone}; // bo2zm
 pub use drop_timers::drop_timers;
 pub use events::{SequencedPlayerEvent, add_event, add_predictable_event, consume_player_events};
+pub use feel::{
+    Bo2Feel, PERK_FALLHEIGHT, PERK_FASTADS, PERK_FLAKJACKET, PERK_LONGERSPRINT, PERK_MOVEFASTER,
+    PRONE_LERP_MS, player_speed, quickdraw_ads_rates, shellshock_walk_scale,
+}; // bo2zm
 pub use footstep::{
     LADDER_SURFACE_FLAGS, LADDER_SURFACE_TYPE, SURFACE_TYPE_NAMES, bob_cycle_wrapped,
     footstep_event, footstep_event_type, footsteps_anim_move_type, footsteps_bob_cycle,
     get_bob_max_speed, ladder_footsteps, should_make_footsteps, surface_type_index,
     surface_type_name, surface_type_to_name,
 };
-pub use feel::{
-    Bo2Feel, PERK_FALLHEIGHT, PERK_FASTADS, PERK_FLAKJACKET, PERK_LONGERSPRINT, quickdraw_ads_rates,
-    shellshock_walk_scale,
-}; // bo2zm
 pub use friction::friction;
 pub use ground::complete_ground_trace;
 pub use integrate::predict_integrate;

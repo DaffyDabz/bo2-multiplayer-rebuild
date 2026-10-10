@@ -20,6 +20,7 @@ fn drain_cell_dyn_model_cmds(mut worker_cmds: ResMut<FrontendWorkerCmds>) {
 
 pub fn register_dyn_ent_frontend(app: &mut App) {
     super::dyn_ent_wake::register_dyn_ent_wake(app);
+    super::debris::register_debris(app);
     app.add_systems(
         Update,
         drain_cell_dyn_model_cmds

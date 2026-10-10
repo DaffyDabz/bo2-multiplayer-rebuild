@@ -366,6 +366,7 @@ pub(super) fn bind(vm: &mut Vm<World>) {
         "removeinfluencer",
         "enableinfluencer",
         "addinfluencerspawnpoints",
+        "addspawnpoints",
         "clearspawnpoints",
         "setenableinfluencer",
         "spawnpointsetrandomvariation",

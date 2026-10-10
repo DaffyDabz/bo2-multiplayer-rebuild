@@ -69,8 +69,10 @@ use crate::{
 use weapon_iw4::WEAPTYPE_GRENADE;
 
 // Resolve muzzle tags after this frame's weapon poses, before advancing FX.
+/// A bullet hit, and whether it is the hit on the local player himself
+/// (his own-hit event, small or large: no impact effect).
 #[derive(Message)]
-struct BulletHitFx(sim::EntityEventPayload);
+struct BulletHitFx(sim::EntityEventPayload, bool);
 
 struct FxFrameTransaction {
     outcome: FxFrameOutcome,
@@ -3741,7 +3743,12 @@ fn play_fx(
 }
 
 fn play_fx_bullet_hit(hit: On<net::EntityBulletHit>, mut hits: MessageWriter<BulletHitFx>) {
-    hits.write(BulletHitFx(hit.event.payload));
+    let own = matches!(
+        hit.event.event,
+        entity_iw4::EntityEventKind::BULLET_HIT_CLIENT_SMALL
+            | entity_iw4::EntityEventKind::BULLET_HIT_CLIENT_LARGE
+    );
+    hits.write(BulletHitFx(hit.event.payload, own));
 }
 
 fn drain_bullet_hit_fx(
@@ -3764,6 +3771,7 @@ fn drain_bullet_hit_fx(
 ) {
     for hit in hits.read() {
         let payload = hit.0;
+        let impact = !hit.1;
 
         let previous_mark_entity = host.0.spawn_mark_entity;
         host.0.spawn_mark_entity = u16::try_from(payload.other_entity_num)
@@ -3781,6 +3789,7 @@ fn drain_bullet_hit_fx(
             payload.surf_type,
             payload.surface_flags,
             payload.event_parm as u32,
+            impact,
             &world_bolts,
             &fpv_bolts,
             &slots,
@@ -3837,6 +3846,7 @@ fn drain_pellet_fx(
             record.surf_type,
             record.surface_flags,
             u32::from(record.flesh_flags),
+            true,
             &world_bolts,
             &fpv_bolts,
             &slots,

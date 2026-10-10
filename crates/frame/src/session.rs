@@ -26,6 +26,16 @@ impl RuntimeRole {
 #[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Headless;
 
+impl Headless {
+    /// IW4L_HEADLESS=1: a test run with no window, no graphics device and no
+    /// sound device. The server, its scripts, the bots and the client's game
+    /// logic all run; nothing is drawn or heard. Read once.
+    pub fn requested() -> bool {
+        static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        *ON.get_or_init(|| std::env::var("IW4L_HEADLESS").is_ok_and(|v| v == "1"))
+    }
+}
+
 #[derive(Resource, Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum AppScreen {
     #[default]

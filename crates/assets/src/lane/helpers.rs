@@ -220,6 +220,7 @@ impl MapXModelCatalog {
                         loop_sound: read_string(st, 28)?,
                         has_phys_preset: stream.ptr_at(st, 44).ok()? != ZonePtr::Null,
                         spawn_models,
+                        spawn_presets: [None; 3],
                     });
                 }
                 let mut hide_bones = [0; 5];

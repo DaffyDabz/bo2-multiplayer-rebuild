@@ -27,7 +27,7 @@ pub use client_view::{
     is_postfx_dvar,
 };
 pub use events::{
-    EntityEventPayload, EntityEventRecord, EventAudience, EventRecord, PelletFxRecord,
+    DebrisRecord, EntityEventPayload, EntityEventRecord, EventAudience, EventRecord, PelletFxRecord,
     SIM_EVENT_ROSTER, SimEvent, SimEventRow, UNRELIABLE_SIM_EVENT_COUNT, sim_event_is_reliable,
 };
 pub use loadout::{
@@ -150,6 +150,13 @@ pub struct ClientMatchState {
     pub(crate) controls: ScriptControls,
 
     pub(crate) max_health: i32,
+
+    /// bo2zm: this frame's hits so far (Black Ops II sends one flinch a
+    /// frame for all of them): the frame, their damage, and the share of
+    /// health already sent (None = nothing sent yet this frame).
+    pub(crate) hit_frame: Option<u32>,
+    pub(crate) hit_blood: i32,
+    pub(crate) hit_sent: Option<i32>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

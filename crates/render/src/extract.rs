@@ -855,6 +855,10 @@ pub fn extract_geometry(
         lighting.1.as_deref(),
         lighting.2.as_ref().and_then(|scene| scene.t5_sky_dynamic_intensity),
     );
+    let sun_sample_size_near = lighting
+        .2
+        .as_ref()
+        .map_or(0.0, |scene| scene.t6_sun_sample_size_near);
     let Some(runtime) = runtime.as_ref() else {
         return;
     };
@@ -973,6 +977,7 @@ pub fn extract_geometry(
             existing.t6_lights = Arc::clone(&scene.t6_lights);
         }
         existing.t6_lighting = t6_lighting;
+        existing.t6_sun_sample_size_near = sun_sample_size_near;
         existing.t6_props = t6_props.0;
         existing.t6_prop_instances = t6_props.1;
         existing.t6_prop_shine = t6_props.2;
@@ -1010,6 +1015,7 @@ pub fn extract_geometry(
         world_surface_draw,
         world_surface_lightmap,
         t6_lighting,
+        t6_sun_sample_size_near: sun_sample_size_near,
         t6_props: t6_props.0,
         t6_prop_instances: t6_props.1,
         t6_prop_shine: t6_props.2,
@@ -1128,8 +1134,11 @@ pub struct T6StaticCache {
     indices: Vec<u32>,
     shared: Arc<(Vec<render_frame::SmodelVertex>, Vec<u32>)>,
     revision: u64,
-    models: std::collections::HashMap<(String, Vec<Option<u32>>), Vec<[u32; 4]>>,
+    models: std::collections::HashMap<T6StaticKey, Vec<[u32; 4]>>,
 }
+
+/// A still model's shape: its name, materials and (bo2mp) hidden parts.
+type T6StaticKey = (String, Vec<Option<u32>>, Option<([u32; 6], u32)>);
 
 /// One model's drawn surfaces appended to a geometry: per surface (first
 /// index, count, colour slot, draw code); vertices from its skinned pose
@@ -1156,6 +1165,13 @@ fn t6_append_model(
         if vbase + vn > skel.positions.len() || ibase + icount > skel.indices.len() {
             continue;
         }
+        // bo2mp: less its hidden parts (a mannequin's shot-off head).
+        let Some(drawn) = item
+            .drawn_indices(surface, &skel.indices[ibase..ibase + icount])
+            .filter(|drawn| !drawn.is_empty())
+        else {
+            continue;
+        };
         let slot = m
             .texture_semantic(asset_material::TS_COLOR_MAP)
             .map_or(u32::MAX, |id| id.0);
@@ -1176,12 +1192,8 @@ fn t6_append_model(
             });
         }
         let start = indices.len() as u32;
-        indices.extend(
-            skel.indices[ibase..ibase + icount]
-                .iter()
-                .map(|&i| base + i.saturating_sub(vbase as u32)),
-        );
-        out.push([start, icount as u32, slot, draw.code()]);
+        indices.extend(drawn.iter().map(|&i| base + i.saturating_sub(vbase as u32)));
+        out.push([start, drawn.len() as u32, slot, draw.code()]);
     }
     out
 }
@@ -1507,7 +1519,7 @@ pub fn extract_t6_dynamic(
             .into_iter()
             .flatten()
         {
-            let key = (item.skel.name.clone(), item.materials.clone());
+            let key = (item.skel.name.clone(), item.materials.clone(), item.hide);
             if !cache.models.contains_key(&key) {
                 let surfaces = t6_append_model(item, catalog, &mut cache.vertices, &mut cache.indices);
                 cache.models.insert(key.clone(), surfaces);
@@ -1595,6 +1607,12 @@ pub fn extract_t6_dynamic(
                 if vbase + vn > skel.positions.len() || ibase + icount > skel.indices.len() {
                     continue;
                 }
+                let Some(drawn) = item
+                    .drawn_indices(surface, &skel.indices[ibase..ibase + icount])
+                    .filter(|drawn| !drawn.is_empty())
+                else {
+                    continue;
+                };
                 let slot = m
                     .texture_semantic(asset_material::TS_COLOR_MAP)
                     .map_or(u32::MAX, |id| id.0);
@@ -1615,12 +1633,8 @@ pub fn extract_t6_dynamic(
                     });
                 }
                 let start = indices.len() as u32;
-                indices.extend(
-                    skel.indices[ibase..ibase + icount]
-                        .iter()
-                        .map(|&i| base + i.saturating_sub(vbase as u32)),
-                );
-                draws.push([start, icount as u32, slot, draw.code(), instance, u32::MAX, u32::MAX]);
+                indices.extend(drawn.iter().map(|&i| base + i.saturating_sub(vbase as u32)));
+                draws.push([start, drawn.len() as u32, slot, draw.code(), instance, u32::MAX, u32::MAX]);
             }
         }
         render_gpu::T6DynamicDraw {

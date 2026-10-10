@@ -53,6 +53,16 @@ pub struct Bo2Feel {
     /// (BO2 default 2, still capped at 16383 ms).
     pub sprint_multiplier: f32,
 
+    /// Move-faster's bit in perks[0] (specialty_movefaster). 0 = none.
+    pub move_faster_perk: u32,
+
+    /// perk_speedMultiplier: move-faster multiplies the walk speed by this
+    /// (BO2 default 1.07: 190 -> 203).
+    pub speed_multiplier: f32,
+
+    /// g_speed: the walk speed every frame starts from (190).
+    pub g_speed: f32,
+
     /// dtp: dive to prone is allowed (BO2 default 1, in both modes).
     pub dive: bool,
 
@@ -64,7 +74,7 @@ pub struct Bo2Feel {
     pub dtp_cycle_scale: f32,
 
     /// Sprint in any direction at full speed, and dive whichever way you
-    /// are moving (an owner's ask; BO2 itself sprints forward only).
+    /// are moving (an owner's ask, 10-09; BO2 itself sprints forward only).
     /// `BO2_OMNI=off` turns it off.
     pub omni: bool,
 
@@ -91,6 +101,9 @@ impl Bo2Feel {
         fast_ads_multiplier: 1.0,
         longer_sprint_perk: 0,
         sprint_multiplier: 1.0,
+        move_faster_perk: 0,
+        speed_multiplier: 1.0,
+        g_speed: 190.0,
         dive: true,
         sprint_cycle_scale: 1.0,
         ducked_sprint_cycle_scale: 1.0,
@@ -162,6 +175,30 @@ pub const PERK_FASTADS: u32 = 1 << 30;
 
 /// Stamin-Up, multiplayer's Extreme Conditioning (specialty_longersprint).
 pub const PERK_LONGERSPRINT: u32 = 1 << 26;
+
+/// BO2 feel M10b: the crouch-to-prone stage of the eye-height change takes
+/// 600 ms (MW2 400), and the stance speed blends over the same time. The
+/// curves themselves are the same.
+pub const PRONE_LERP_MS: i32 = 600;
+
+/// Move-faster (specialty_movefaster): multiplayer's Lightweight speed and
+/// the Turned zombies' perk.
+pub const PERK_MOVEFASTER: u32 = 1 << 9;
+
+/// BO2 feel M8b: every frame the walk speed starts again from g_speed; with
+/// move-faster it is multiplied by perk_speedMultiplier and cut to a whole
+/// number (190 x 1.07 = 203). `None` = MW2 rules, the speed is left alone.
+#[must_use]
+pub fn player_speed(ps: &PlayerState, feel: Bo2Feel) -> Option<i32> {
+    if !feel.on {
+        return None;
+    }
+    let mut speed = feel.g_speed;
+    if feel.move_faster_perk != 0 && ps.perks[0] & feel.move_faster_perk != 0 {
+        speed *= feel.speed_multiplier;
+    }
+    Some(speed as i32)
+}
 
 /// In Zombies, Stamin-Up raises the gun's move speed to at least this while
 /// sprinting (BO2's own number).
@@ -452,6 +489,7 @@ mod tests {
             weapon_move_speed_scale: 1.0,
             weapon_ads_move_speed_scale: 1.0,
             shellshock_movement_scale: 1.0,
+            prone_lerp_ms: 0,
         }
     }
 
@@ -565,13 +603,19 @@ mod tests {
         };
         let mut ps = PlayerState::ZERO;
         let rates = (1.0 / 250.0, 1.0 / 200.0);
-        assert_eq!(quickdraw_ads_rates(&ps, rates.0, rates.1, false, feel), rates);
+        assert_eq!(
+            quickdraw_ads_rates(&ps, rates.0, rates.1, false, feel),
+            rates
+        );
         ps.perks[0] |= PERK_FASTADS;
         assert_eq!(
             quickdraw_ads_rates(&ps, rates.0, rates.1, false, feel),
             (1.0 / 125.0, 1.0 / 100.0)
         );
-        assert_eq!(quickdraw_ads_rates(&ps, rates.0, rates.1, true, feel), rates);
+        assert_eq!(
+            quickdraw_ads_rates(&ps, rates.0, rates.1, true, feel),
+            rates
+        );
         assert_eq!(
             quickdraw_ads_rates(&ps, rates.0, rates.1, false, Bo2Feel::IW4),
             rates
@@ -607,5 +651,54 @@ mod tests {
         // 0.24 x 50 = 12; IW4 keeps its normal step rhythm.
         assert_eq!(ps.bob_cycle, 12);
         assert_ne!(iw4.bob_cycle, 12);
+    }
+
+    #[test]
+    fn move_faster_walks_at_203() {
+        let feel = Bo2Feel {
+            move_faster_perk: PERK_MOVEFASTER,
+            speed_multiplier: 1.07,
+            ..BO2
+        };
+        let mut ps = PlayerState::ZERO;
+        ps.speed = 150;
+        assert_eq!(player_speed(&ps, feel), Some(190));
+        ps.perks[0] |= PERK_MOVEFASTER;
+        assert_eq!(player_speed(&ps, feel), Some(203));
+        assert_eq!(player_speed(&ps, Bo2Feel::IW4), None);
+    }
+
+    /// Eye height and stance speed `ms` after a drop to prone starts at
+    /// crouch height.
+    fn prone_after(ms: i32, prone_lerp_ms: i32) -> (f32, f32) {
+        let mut ps = PlayerState::ZERO;
+        ps.view_height_target = crate::view_height::PRONE;
+        ps.view_height_current = 40.0;
+        let pml = walking_pml();
+        let cmd = UserCmd {
+            server_time: 1000,
+            ..UserCmd::default()
+        };
+        crate::update_view_height(&mut ps, &pml, &cmd, prone_lerp_ms);
+        assert_eq!(ps.view_height_lerp_time, 1000);
+        let scale = crate::stance_speed_scale(&ps, 1000 + ms, 0.15, prone_lerp_ms);
+        let cmd = UserCmd {
+            server_time: 1000 + ms,
+            ..cmd
+        };
+        crate::update_view_height(&mut ps, &pml, &cmd, prone_lerp_ms);
+        (ps.view_height_current, scale)
+    }
+
+    #[test]
+    fn bo2_prone_takes_600_ms() {
+        let (height, scale) = prone_after(400, PRONE_LERP_MS);
+        assert!(height > 11.0, "still going down at 400 ms: {height}");
+        // Two thirds of the way: 0.15 x 2/3 + 0.65 x 1/3.
+        assert!((scale - 0.3167).abs() < 0.001, "{scale}");
+        assert_eq!(prone_after(600, PRONE_LERP_MS).0, 11.0);
+        // MW2: down at 400 ms.
+        assert_eq!(prone_after(400, 0).0, 11.0);
+        assert!((prone_after(300, 0).1 - 0.275).abs() < 0.001);
     }
 }

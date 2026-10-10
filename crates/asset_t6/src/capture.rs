@@ -287,6 +287,9 @@ pub struct XModelRef {
     /// the collision surfaces (`collSurfs`) bullets and thrown things hit.
     pub coll_lod: i16,
     pub coll_surfs: Vec<XModelCollSurfRef>,
+    /// bo2mp: how the model flies when it comes loose (`physPreset`): a
+    /// destructible's broken-off piece without one stays put.
+    pub phys_preset: Option<AssetKey>,
 }
 
 /// One model collision surface (`XModelCollSurf_s`): its triangles (each a
@@ -752,6 +755,44 @@ pub struct DestructiblePieceRef {
     pub health: i32,
     /// Hide-part bits (`hideBones`), the model's bone order.
     pub hide_bones: [u32; 5],
+    /// The first of the piece's constraints (`physConstraints->data[0]`),
+    /// the only one a break reads: a launch (type 7) aims what breaks off.
+    pub constraint: Option<PhysConstraintRef>,
+}
+
+/// bo2mp: a physics preset (`PhysPreset`): how a loose piece weighs,
+/// bounces and falls.
+#[derive(Clone, Debug, Default)]
+pub struct PhysPresetRef {
+    pub name: String,
+    pub mass: f32,
+    pub bounce: f32,
+    pub friction: f32,
+    pub bullet_force_scale: f32,
+    pub explosive_force_scale: f32,
+    pub pieces_spread_fraction: f32,
+    pub pieces_upward_velocity: f32,
+    pub gravity_scale: f32,
+    pub center_of_mass_offset: [f32; 3],
+}
+
+/// bo2mp: one physics constraint (`PhysConstraint`), the fields a break's
+/// launch reads: the push's strength (`power`), its direction as angles
+/// added to the thing's own (`scale`) and how far off its centre it is
+/// pushed (`spin_scale`).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct PhysConstraintRef {
+    pub kind: i32,
+    pub power: f32,
+    pub scale: [f32; 3],
+    pub spin_scale: f32,
+}
+
+/// bo2mp: a model's constraint set (`PhysConstraints`).
+#[derive(Clone, Debug, Default)]
+pub struct PhysConstraintsRef {
+    pub name: String,
+    pub data: Vec<PhysConstraintRef>,
 }
 
 /// bo2mp: one stage of a piece (`DestructibleStage`): the bone it shows,
@@ -864,6 +905,10 @@ pub struct ZoneCapture {
     pub vehicles: Vec<VehicleRef>,
     /// bo2mp: destructible definitions (a map's cars, barrels, ...).
     pub destructibles: Vec<DestructibleRef>,
+    /// bo2mp: physics presets and constraint sets (what a broken-off piece
+    /// flies with).
+    pub phys_presets: Vec<PhysPresetRef>,
+    pub phys_constraints: Vec<PhysConstraintsRef>,
     /// bo2zm M3: weapon camos (Pack-a-Punch's look).
     pub weapon_camos: Vec<crate::m2::WeaponCamoRef>,
     /// bo2zm M3: fonts (the HUD's text).
@@ -1289,6 +1334,9 @@ impl ZoneCapture {
             contents: s.u32_at(x, l::XModel::contents)?,
             coll_lod: s.i16_at(x, l::XModel::collLod)?,
             coll_surfs,
+            phys_preset: self
+                .asset_at(s, x.at(l::XModel::physPreset))?
+                .filter(|k| k.ty == AssetType::PhysPreset),
         })
     }
 
@@ -2327,6 +2375,41 @@ impl WalkSink for ZoneCapture {
                 });
                 None
             }
+            AssetType::PhysPreset => {
+                use l::PhysPreset as pp;
+                self.phys_presets.push(PhysPresetRef {
+                    name: string_field(s, body, pp::name)?,
+                    mass: s.f32_at(body, pp::mass)?,
+                    bounce: s.f32_at(body, pp::bounce)?,
+                    friction: s.f32_at(body, pp::friction)?,
+                    bullet_force_scale: s.f32_at(body, pp::bulletForceScale)?,
+                    explosive_force_scale: s.f32_at(body, pp::explosiveForceScale)?,
+                    pieces_spread_fraction: s.f32_at(body, pp::piecesSpreadFraction)?,
+                    pieces_upward_velocity: s.f32_at(body, pp::piecesUpwardVelocity)?,
+                    gravity_scale: s.f32_at(body, pp::gravityScale)?,
+                    center_of_mass_offset: vec3(s, body, pp::centerOfMassOffset)?,
+                });
+                Some(self.phys_presets.len() - 1)
+            }
+            AssetType::PhysConstraints => {
+                use l::{PhysConstraint as pc, PhysConstraints as pcs};
+                let count = s.u32_at(body, pcs::count)?.min(16) as usize;
+                let mut data = Vec::with_capacity(count);
+                for i in 0..count {
+                    let c = body.at(pcs::data + i * pc::SIZE);
+                    data.push(PhysConstraintRef {
+                        kind: s.i32_at(c, pc::r#type)?,
+                        power: s.f32_at(c, pc::power)?,
+                        scale: vec3(s, c, pc::scale)?,
+                        spin_scale: s.f32_at(c, pc::spin_scale)?,
+                    });
+                }
+                self.phys_constraints.push(PhysConstraintsRef {
+                    name: string_field(s, body, pcs::name)?,
+                    data,
+                });
+                Some(self.phys_constraints.len() - 1)
+            }
             AssetType::DestructibleDef => {
                 let name = string_field(s, body, l::DestructibleDef::name).unwrap_or_default();
                 let model_of = |this: &mut Self, off: usize| -> String {
@@ -2386,6 +2469,11 @@ impl WalkSink for ZoneCapture {
                         for (j, word) in hide_bones.iter_mut().enumerate() {
                             *word = s.u32_at(p, dp::hideBones + j * 4)?;
                         }
+                        let constraint = self
+                            .asset_at(s, p.at(dp::physConstraints))?
+                            .filter(|k| k.ty == AssetType::PhysConstraints)
+                            .and_then(|k| self.phys_constraints.get(k.index))
+                            .and_then(|c| c.data.first().copied());
                         pieces.push(DestructiblePieceRef {
                             stages,
                             parent_piece: s.slice_at(p, dp::parentPiece, 1)?[0],
@@ -2395,6 +2483,7 @@ impl WalkSink for ZoneCapture {
                             melee_damage_scale: s.f32_at(p, dp::meleeDamageScale)?,
                             health: s.i32_at(p, dp::health)?,
                             hide_bones,
+                            constraint,
                         });
                     }
                 }

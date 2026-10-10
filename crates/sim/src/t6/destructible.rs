@@ -97,6 +97,7 @@ pub(super) fn script_damage(
         None,
         amount,
         kind(means),
+        None,
         attacker,
         weapon,
     );

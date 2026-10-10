@@ -30,6 +30,20 @@ pub struct T5DestructibleStage {
     pub loop_sound: Option<String>,
     pub has_phys_preset: bool,
     pub spawn_models: [Option<String>; 3],
+    /// bo2mp: how each spawn model flies once it comes loose (its model's
+    /// `physPreset`); none leaves that piece unspawned.
+    pub spawn_presets: [Option<DebrisPreset>; 3],
+}
+
+/// bo2mp: the parts of a `PhysPreset` a broken-off piece flies by.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct DebrisPreset {
+    pub mass: f32,
+    pub bounce: f32,
+    pub friction: f32,
+    pub bullet_force_scale: f32,
+    pub explosive_force_scale: f32,
+    pub gravity_scale: f32,
 }
 
 impl T5DestructiblePiece {

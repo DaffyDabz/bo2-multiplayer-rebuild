@@ -569,6 +569,11 @@ fn run_map(
         app.insert_resource(bevy::winit::WinitSettings::continuous())
             .insert_resource(frame::Headless);
     }
+    if frame::Headless::requested() {
+        // IW4L_HEADLESS=1: nothing waits for the world to be drawn or heard.
+        diag::info!(Launch, "headless: no window, no graphics device, no sound device (IW4L_HEADLESS=1)");
+        app.insert_resource(frame::Headless);
+    }
     app.add_plugins(crate::plugins::default_plugins_with_quiet_log(
         WindowPlugin {
             exit_condition: if dedicated {

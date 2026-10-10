@@ -100,6 +100,11 @@ pub fn assemble_listen_app() -> App {
 }
 
 pub fn default_plugins_with_quiet_log(mut window: WindowPlugin) -> bevy::app::PluginGroupBuilder {
+    let headless = frame::Headless::requested();
+    if headless {
+        window.primary_window = None;
+        window.exit_condition = bevy::window::ExitCondition::DontExit;
+    }
     if let Some(primary) = window.primary_window.as_mut() {
         primary.desired_maximum_frame_latency = core::num::NonZeroU32::new(frame_latency());
     }
@@ -110,6 +115,10 @@ pub fn default_plugins_with_quiet_log(mut window: WindowPlugin) -> bevy::app::Pl
         | WgpuFeatures::TEXTURE_BINDING_ARRAY
         | WgpuFeatures::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING
         | WgpuFeatures::PARTIALLY_BOUND_BINDING_ARRAY;
+    if headless {
+        // No backends: bevy makes no graphics device and no render world.
+        wgpu.backends = None;
+    }
     let plugins = DefaultPlugins
         .set(window)
         .set(LogPlugin {
@@ -121,6 +130,23 @@ pub fn default_plugins_with_quiet_log(mut window: WindowPlugin) -> bevy::app::Pl
             render_creation: RenderCreation::Automatic(Box::new(wgpu)),
             ..default()
         });
+    if headless {
+        // No window loop, sound device or gamepads: a plain loop paced like a
+        // hidden test run (about 30 updates a second; the server keeps 20 Hz).
+        // With no render world bevy also leaves out its entity sync, yet the
+        // components it syncs still report their removal to it: a despawned
+        // camera or mesh would panic. Its queue is never drained here; the
+        // records are a few bytes each.
+        return plugins
+            .disable::<bevy::winit::WinitPlugin>()
+            .disable::<bevy::audio::AudioPlugin>()
+            .disable::<bevy::gilrs::GilrsPlugin>()
+            .disable::<PipelinedRenderingPlugin>()
+            .add(bevy::render::sync_world::SyncWorldPlugin)
+            .add(bevy::app::ScheduleRunnerPlugin::run_loop(
+                std::time::Duration::from_millis(33),
+            ));
+    }
     if pipelined_rendering() {
         plugins
     } else {

@@ -428,9 +428,9 @@ pub(super) fn hud_icons(
         }
     }
     // The pictures the engine draws when no gun's icon applies
-    // (`hud_obit_death_suicide`, `_falling`, `_crush`, `_grenade_round`,
-    // `hud_obit_knife`, `killicondied`, `killiconheadshot`), each as a
-    // square icon under its own name.
+    // (`hud_obit_death_suicide`, `_falling`,
+    // `_crush`, `_grenade_round`, `hud_obit_knife`, `killicondied`,
+    // `killiconheadshot`), each as a square icon under its own name.
     let mut obit_names: Vec<String> = Vec::new();
     for c in captures {
         for m in &c.materials {
@@ -937,6 +937,7 @@ fn destructible_defs(captures: &[&ZoneCapture]) -> Vec<std::sync::Arc<xmodel_run
                 .iter()
                 .map(|p| xmodel_runtime::T5DestructiblePiece {
                     stages: p.stages.clone().map(|st| xmodel_runtime::T5DestructibleStage {
+                        spawn_presets: st.spawn_models.clone().map(|m| debris_preset(captures, &m)),
                         show_bone: text(&st.show_bone),
                         break_health: st.break_health,
                         max_time: st.max_time,
@@ -967,6 +968,30 @@ fn destructible_defs(captures: &[&ZoneCapture]) -> Vec<std::sync::Arc<xmodel_run
         }
     }
     defs
+}
+
+/// bo2mp: how a destructible's spawn model flies once it breaks off: its
+/// model's `physPreset`, the latest zone's copy of the model winning.
+fn debris_preset(captures: &[&ZoneCapture], model: &str) -> Option<xmodel_runtime::DebrisPreset> {
+    if model.is_empty() {
+        return None;
+    }
+    captures.iter().rev().find_map(|c| {
+        let p = c
+            .xmodels
+            .iter()
+            .filter(|x| x.name.trim_start_matches(',') == model)
+            .find_map(|x| x.phys_preset)
+            .and_then(|k| c.phys_presets.get(k.index))?;
+        (p.mass > 0.0).then_some(xmodel_runtime::DebrisPreset {
+            mass: p.mass,
+            bounce: p.bounce,
+            friction: p.friction,
+            bullet_force_scale: p.bullet_force_scale,
+            explosive_force_scale: p.explosive_force_scale,
+            gravity_scale: p.gravity_scale,
+        })
+    })
 }
 
 /// bo2mp: a map's entity text with each destructible built from its
@@ -1010,7 +1035,8 @@ fn destructible_entities(text: &str, defs: &HashMap<String, String>) -> String {
 }
 
 /// bo2zm M3: every XModel the zones carry whose name a server script
-/// (as a string constant) or a map entity (`"model"`) names.
+/// (as a string constant), a map entity (`"model"`) or a destructible's
+/// broken-off piece names.
 fn script_model_names(
     captures: &[&ZoneCapture],
     destructibles: &HashMap<String, String>,
@@ -1041,6 +1067,13 @@ fn script_model_names(
         for w in &c.weapons {
             for m in &w.world_models {
                 take(m);
+            }
+        }
+        for d in &c.destructibles {
+            for st in d.pieces.iter().flat_map(|p| &p.stages) {
+                for m in &st.spawn_models {
+                    take(m);
+                }
             }
         }
         for ents in &c.map_ents {

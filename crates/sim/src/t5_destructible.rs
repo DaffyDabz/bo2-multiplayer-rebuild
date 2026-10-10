@@ -208,11 +208,45 @@ fn update_hide_parts(dobj: &mut AuthorityDObjState) {
     }
 }
 
+/// bo2mp: Black Ops II's push on a loose piece per unit of hit
+/// (`dynEnt_bulletForce`, `dynEnt_explodeForce`) and a blast's lift
+/// (`dynEnt_explodeUpbias`).
+const BULLET_FORCE: f32 = 0.8;
+const EXPLODE_FORCE: f32 = 12.0;
+const EXPLODE_UPBIAS: f32 = 0.5;
+
+/// bo2mp: how fast a piece leaves when a hit going `dir` breaks it off:
+/// the engine's push scaled by the piece's preset, over its mass. A
+/// script's damage (no direction) lets it drop.
+fn launch_velocity(
+    preset: &xmodel_runtime::DebrisPreset,
+    kind: DamageKind,
+    dir: Option<[f32; 3]>,
+) -> [f32; 3] {
+    let Some(dir) = dir.and_then(|d| glam::Vec3::from_array(d).try_normalize()) else {
+        return [0.0; 3];
+    };
+    let push = match kind {
+        DamageKind::Explosive => {
+            let lifted = (dir + glam::Vec3::Z * EXPLODE_UPBIAS)
+                .try_normalize()
+                .unwrap_or(dir);
+            lifted * EXPLODE_FORCE * preset.explosive_force_scale
+        }
+        DamageKind::Bullet | DamageKind::Melee => dir * BULLET_FORCE * preset.bullet_force_scale,
+        DamageKind::Script => glam::Vec3::ZERO,
+    };
+    (push / preset.mass.max(1e-4)).to_array()
+}
+
+#[allow(clippy::too_many_arguments)]
 fn publish(
     world: &mut FrameWorld,
     tick: Tick,
     owner: AuthorityModelOwner,
     out: Outcome,
+    kind: DamageKind,
+    dir: Option<[f32; 3]>,
     attacker: Option<ClientId>,
     weapon: u32,
 ) {
@@ -253,6 +287,7 @@ fn publish(
         .as_ref()
         .and_then(|cap| cap.pose(&dobj.pose_request, dobj.world_from_model).ok());
     let mut events = Vec::new();
+    let mut debris = Vec::new();
     for event in breaks {
         let piece = &definition.pieces[event.piece];
         let st = &piece.stages[event.stage];
@@ -278,14 +313,41 @@ fn publish(
             st.break_effect,
             health[event.piece]
         );
-        if st.has_phys_preset || st.spawn_models.iter().any(Option::is_some) {
-            diag::warn!(
-                Sim,
-                "T5 destructible debris unhosted: {} piece={} stage={}",
-                definition.name,
-                event.piece,
-                event.stage
-            );
+        // The pieces this stage drops come loose where its bone was.
+        let shown = dobj.capability.as_ref().and_then(|cap| {
+            cap.pose
+                .bone_names
+                .iter()
+                .position(|name| Some(name) == st.show_bone.as_ref())
+        });
+        let (_, turn, at) = shown
+            .and_then(|b| pose.as_ref()?.get(b))
+            .copied()
+            .unwrap_or(matrix)
+            .to_scale_rotation_translation();
+        for (model, preset) in st.spawn_models.iter().zip(&st.spawn_presets) {
+            let (Some(model), Some(preset)) = (model, preset) else {
+                continue;
+            };
+            let velocity = launch_velocity(preset, kind, dir);
+            if std::env::var_os("IW4L_T6_HITLOG").is_some() {
+                diag::info!(
+                    Sim,
+                    "bo2mp destructible {} drops {model} at {at:?} flying {velocity:?}",
+                    definition.name
+                );
+            }
+            debris.push(crate::DebrisRecord {
+                model: model.clone(),
+                origin: at.to_array(),
+                rotation: turn.to_array(),
+                velocity,
+                mass: preset.mass,
+                bounce: preset.bounce,
+                friction: preset.friction,
+                bullet_force_scale: preset.bullet_force_scale,
+                explosive_force_scale: preset.explosive_force_scale,
+            });
         }
         if let Some(notify) = &st.break_notify
             && hosted
@@ -327,6 +389,9 @@ fn publish(
         state.notices.extend(notices);
     }
     update_hide_parts(dobj);
+    for record in debris {
+        world.push_debris(record);
+    }
     for (kind, name, origin, direction) in events {
         let index = if kind == entity_iw4::EntityEventKind::PLAY_FX {
             world.effect_name_index(&name)
@@ -354,16 +419,28 @@ pub(crate) fn apply_hit(
     owner: AuthorityModelOwner,
     bone: u16,
     amount: u32,
+    dir: [f32; 3],
     attacker: Option<ClientId>,
     weapon: u32,
 ) -> bool {
     let amount = i32::try_from(amount).unwrap_or(i32::MAX);
-    apply_damage(world, tick, owner, Some(bone), amount, DamageKind::Bullet, attacker, weapon)
+    apply_damage(
+        world,
+        tick,
+        owner,
+        Some(bone),
+        amount,
+        DamageKind::Bullet,
+        Some(dir),
+        attacker,
+        weapon,
+    )
 }
 
 /// bo2mp: damage a destructible: the piece whose shown bone (or a bone
 /// under it) was struck, else the base piece, by that piece's scale for the
-/// kind. False when `owner` is not a destructible.
+/// kind. A piece it breaks off flies along `dir`. False when `owner` is
+/// not a destructible.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn apply_damage(
     world: &mut FrameWorld,
@@ -372,6 +449,7 @@ pub(crate) fn apply_damage(
     bone: Option<u16>,
     amount: i32,
     kind: DamageKind,
+    dir: Option<[f32; 3]>,
     attacker: Option<ClientId>,
     weapon: u32,
 ) -> bool {
@@ -414,7 +492,7 @@ pub(crate) fn apply_damage(
     }
     let mut out = Outcome::default();
     state.damage(index, damage, None, 0, &mut out);
-    publish(world, tick, owner, out, attacker, weapon);
+    publish(world, tick, owner, out, kind, dir, attacker, weapon);
     true
 }
 

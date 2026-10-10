@@ -18,6 +18,10 @@ pub struct CmdScaleWalkContext {
 
     /// Walking speed scale while shellshocked (1 = not slowed).
     pub shellshock_movement_scale: f32,
+
+    /// How long the crouch-to-prone stage of an eye-height change takes, in
+    /// ms (BO2 600). 0 = MW2's 400.
+    pub prone_lerp_ms: i32,
 }
 
 #[must_use]
@@ -64,6 +68,7 @@ pub fn cmd_scale_walk(ps: &PlayerState, cmd: &UserCmd, context: CmdScaleWalkCont
             ps,
             cmd.server_time,
             context.player_last_stand_crawl_speed_scale,
+            context.prone_lerp_ms,
         ),
     };
 

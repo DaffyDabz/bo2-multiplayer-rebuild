@@ -976,7 +976,7 @@ pub fn weapon_ordinary(
         hand.weapon_restrict_kick_time = (hand.weapon_restrict_kick_time - cmd.msec).max(0);
     }
 
-    crate::sprint::weapon_check_for_sprint(hand, facts, cmd.pm_flags);
+    crate::sprint::weapon_check_for_sprint(hand, facts, cmd.pm_flags, cmd.perks0);
     crate::sprint::weapon_advance_sprint(hand, &mut cmd.weap_flags, &mut cmd.pm_flags, cmd.pm_type);
     crate::sprint::weapon_dive_anim(hand, cmd.pm_flags);
     crate::crawl::weapon_crawl_anim(hand, cmd.pm_flags, cmd.pm_type, cmd.buttons, cmd.move_input);

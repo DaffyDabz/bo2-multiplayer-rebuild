@@ -445,7 +445,7 @@ fn register_death(registry: &mut NativeRegistry) {
         };
         let finish = {
             let mut frame = FrameWorld::from_world(world);
-            let finish = script_player::finish_damage(&mut frame, id, amount, dir);
+            let finish = script_player::finish_damage(&mut frame, id, amount, dir, false);
             if finish == script_player::Finish::Killed {
                 script_player::kill(&mut frame, tick, id, attacker, commit);
             }

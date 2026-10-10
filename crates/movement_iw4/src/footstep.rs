@@ -149,7 +149,8 @@ pub fn get_bob_max_speed(
             max_speed *= scales.weapon_ads_move_speed_scale;
         }
     }
-    max_speed * stance_speed_scale(ps, server_time, scales.player_last_stand_crawl_speed_scale)
+    let crawl = scales.player_last_stand_crawl_speed_scale;
+    max_speed * stance_speed_scale(ps, server_time, crawl, scales.prone_lerp_ms)
 }
 
 pub fn footsteps_bob_cycle(

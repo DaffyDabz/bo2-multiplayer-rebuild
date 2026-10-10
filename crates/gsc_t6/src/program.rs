@@ -9,7 +9,7 @@
 //! `path::function`, for the host to provide (Zombies' missing
 //! `maps/mp/gametypes_zm/_globallogic`).
 
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::object::{CaseValue, Insn, ScriptObject, op};
 use crate::value::{FuncRef, Str, Strings};
@@ -193,6 +193,8 @@ pub struct Program {
     tree_index: FxHashMap<Str, u32>,
     pub vectors: Vec<[f32; 3]>,
     pub switches: Vec<SwitchTable>,
+    /// Bare names that bind to the engine even where a script defines one.
+    engine_first: FxHashSet<(Str, bool)>,
 }
 
 /// Normalize a script path: lower case, `/`, no `.gsc`.
@@ -206,7 +208,23 @@ impl Program {
     /// Link server scripts (client `.csc` objects are skipped). Later
     /// objects replace earlier ones with the same name.
     pub fn link(objects: Vec<ScriptObject>, strings: &mut Strings) -> Result<Self, String> {
+        Self::link_with(objects, strings, &[])
+    }
+
+    /// As `link`, but a bare call to one of `engine_first` (name, method)
+    /// binds to the engine builtin before the script's own or included
+    /// functions, as Black Ops II's linker does for every name the engine
+    /// knows.
+    pub fn link_with(
+        objects: Vec<ScriptObject>,
+        strings: &mut Strings,
+        engine_first: &[(&str, bool)],
+    ) -> Result<Self, String> {
         let mut p = Program::default();
+        for &(name, method) in engine_first {
+            p.engine_first
+                .insert((strings.intern(&name.to_ascii_lowercase()), method));
+        }
         let mut by_name: FxHashMap<String, ScriptObject> = FxHashMap::default();
         let mut order: Vec<String> = Vec::new();
         for o in objects {
@@ -294,6 +312,9 @@ impl Program {
             }
             let full = strings.intern(&format!("{ns}::{lname}"));
             return FuncRef::Builtin(self.builtin(full, method));
+        }
+        if self.engine_first.contains(&(name, method)) {
+            return FuncRef::Builtin(self.builtin(name, method));
         }
         if let Some(&fi) = self.function_index.get(&(script, name)) {
             return FuncRef::Script(fi);

@@ -170,6 +170,17 @@ only. Like upstream IW4L, much of this code was written by an LLM (Claude), dire
 
 ## Recent changes
 
+- 2026-10-10: Nuketown's mannequins break the way the original breaks them, the match sets up spawns the way
+  Black Ops II does, names show over teammates' heads, being shot no longer hangs a blood cloud at your own
+  camera (only the red screen edges), and the sun casts live shadows sized for each map.
+- 2026-10-10: movement closer to Black Ops II: a hit jolts your view by how hard it hit and the damage arrow
+  points back at the shooter, Lightweight's speed and the original sprint recovery, a dive that stops sliding
+  ends at once, a controller dive needs the stance button held, going prone takes the original 600 ms, the
+  game's scripts can switch sprint, stances, knifing and aiming off and on, and a second PC predicts its moves
+  with the match's own movement rules.
+- 2026-10-10: a no-graphics test mode (`IW4L_HEADLESS=1`): a test match with no window, graphics card or sound
+  device. A Nuketown match with bots takes about a third of the CPU, under half the memory and a seventh of the
+  disk reads of a drawn one, so many test matches run at once on one PC.
 - 2026-10-09: movement from the original game's own numbers: a dive needs a short sprint first, waits about
   1.5 s after the last one, pops higher and can be steered a little; falls hurt from the original heights and the
   fall-damage perk stops it; a shellshock slows your walk by the shock's own amount. The Lodestar's view snaps to
@@ -199,11 +210,10 @@ only. Like upstream IW4L, much of this code was written by an LLM (Claude), dire
 
 ## Coming soon
 
-- Nuketown's mannequins and clock break when shot.
 - The Hellstorm's steer prompt key.
-- A no-graphics test mode, so many test matches can run at once.
 - Movement and gun-feel numbers checked side by side against the original game.
-- Live sun shadows; blood on hits as the original shows it.
+- Sun shadows fitted exactly as the original fits them, and cast by moving things too.
+- Care-package scorestreaks used the original way (hold the switch-weapon key).
 - More per-map test runs to fill in the mechanics bars; visual comparison shots for each map.
 - Playing together over LAN, and one build with Black Ops II's main menu for both Multiplayer and Zombies.
 

@@ -170,13 +170,19 @@ fn bo2mp_damage(
         Some((event, health)) if event != ps.damage_event && ps.health < health => {
             let lost = (health - ps.health).max(0) as f32 / ps.max_health as f32;
             st.splat = (st.splat + 0.25 + lost * 2.0).min(1.0);
-            st.hits.push((now, ps.damage_yaw as f32 * 360.0 / 256.0));
+            // The damage bytes are the hit's travel (Black Ops II's), so
+            // the attacker is back the other way; 255/255 = no direction.
+            let from = (ps.damage_yaw != 255 || ps.damage_pitch != 255)
+                .then(|| (ps.damage_yaw as f32 * 360.0 / 256.0 + 180.0) % 360.0);
+            if let Some(from) = from {
+                st.hits.push((now, from));
+            }
             diag::info!(
                 Ui,
-                "bo2mp damage: hit for {} (health {}), from yaw {:.0}, facing {:.0}",
+                "bo2mp damage: hit for {} (health {}), from yaw {:?}, facing {:.0}",
                 health - ps.health,
                 ps.health,
-                ps.damage_yaw as f32 * 360.0 / 256.0,
+                from.map(|y| y.round()),
                 ps.viewangles[1]
             );
             if st.hits.len() > 4 {

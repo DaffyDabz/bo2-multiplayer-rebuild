@@ -34,4 +34,4 @@ pub use xanim_tree::{
     XAnimTreeError, XAnimTreeRuntime,
 };
 
-pub use destructible::{T5DestructibleDef, T5DestructiblePiece, T5DestructibleStage};
+pub use destructible::{DebrisPreset, T5DestructibleDef, T5DestructiblePiece, T5DestructibleStage};

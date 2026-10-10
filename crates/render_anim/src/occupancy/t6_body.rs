@@ -67,6 +67,9 @@ const TORSO_OVER_LEGS: f32 = 1000.0;
 struct T6BodyPoses {
     rows: Vec<PosedBody>,
     local_corpse_root: Option<[f32; 3]>,
+    /// Each posed body's head (`j_head`) in the world: where the names over
+    /// players' heads hang.
+    heads: Vec<(u16, [f32; 3])>,
 }
 
 /// Where the local player's own corpse's `j_mainroot` is in the world this
@@ -217,9 +220,14 @@ pub fn register_t6_body_systems(app: &mut App) {
                 .after(crate::anim::dobj_pose::begin_dobj_pose_frame)
                 .after(frame::WorkerCmdSet::SkinModel)
                 .before(frame::WorkerCmdSet::FxRemaining)
+                .in_set(T6BodyPosesPublished)
                 .in_set(frame::ClientSet::Present),
         );
 }
+
+/// The BO2 bodies' bones and heads are published for this frame.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct T6BodyPosesPublished;
 
 /// Each posed player's bones go where the effect system looks for bolted
 /// effects (his number), and his entity carries his gun's flash and brass
@@ -229,9 +237,16 @@ fn publish_t6_body_poses(
     poses: Res<T6BodyPoses>,
     mut corpse_root: ResMut<LocalCorpseRoot>,
     mut dobj_poses: ResMut<crate::anim::dobj_pose::HostDObjPoseFrame>,
+    mut posed_players: ResMut<crate::anim::dobj_pose::PosedPlayerFrame>,
     mut commands: Commands,
 ) {
     corpse_root.0 = poses.local_corpse_root;
+    for &(entnum, head) in &poses.heads {
+        posed_players.publish(crate::anim::dobj_pose::PosedPlayer {
+            entnum,
+            head: crate::anim::dobj_pose::PosedPlayerHead::Exact(Vec3::from_array(head)),
+        });
+    }
     for row in &poses.rows {
         let _ = dobj_poses.publish(u32::from(row.number), true, 0, row.world_from_local, &row.bones);
         let target = |bone: Option<u16>| {
@@ -890,6 +905,7 @@ fn collect_t6_bodies(
 ) {
     out.items.clear();
     poses.rows.clear();
+    poses.heads.clear();
     poses.local_corpse_root = None;
     let mut corpse_root_time: Option<i32> = None;
     let _slow = SlowGuard(std::time::Instant::now(), "t6 bodies");
@@ -1329,9 +1345,14 @@ fn collect_t6_bodies(
                 origin,
                 light_at,
                 posed: Some(verts),
+                hide: None,
             });
         }
         // His gun's tags, for its muzzle flash, shells and tracers.
+        if let Some(head) = dobj.find("j_head").and_then(|i| world.get(i)) {
+            let head = world_from_local.transform_point3(head.w_axis.truncate());
+            poses.heads.push((identity.number(), head.to_array()));
+        }
         if let Some(gun) = right_gun {
             let tag = |name: &str| {
                 dobj.bones
@@ -1442,6 +1463,7 @@ fn collect_t6_bodies(
                 origin,
                 light_at,
                 posed: Some(verts.clone()),
+                hide: None,
             });
         }
     }

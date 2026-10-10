@@ -545,8 +545,13 @@ pub struct SimState {
     next_entity_event: EventSequence,
 
     pellet_fx: Vec<crate::PelletFxRecord>,
+    /// bo2mp: the pieces that broke off this tick.
+    debris: Vec<crate::DebrisRecord>,
     /// bo2zm: solid turned boxes (see `SnapshotMeta::oriented_blockers`).
     oriented_blockers: Vec<crate::OrientedBlocker>,
+    /// bo2zm: the movement rules (see `SnapshotMeta::feel`): the game's own,
+    /// or on the guessing side the ones from the last snapshot.
+    feel: Option<movement_iw4::Bo2Feel>,
 
     world_objects: WorldObjectState,
 
@@ -654,7 +659,9 @@ impl Default for SimState {
             entity_events: Vec::new(),
             next_entity_event: EventSequence(1),
             pellet_fx: Vec::new(),
+            debris: Vec::new(),
             oriented_blockers: Vec::new(),
+            feel: None,
             world_objects: WorldObjectState::default(),
             script_gaps: ScriptGaps::default(),
             sound_alias_cs: crate::SoundAliasCs::default(),
@@ -2682,7 +2689,9 @@ impl SimState {
                 journal: self.journal.clone(),
                 entity_events: self.entity_events.clone(),
                 pellet_fx: self.pellet_fx.clone(),
+                debris: self.debris.clone(),
                 oriented_blockers: self.oriented_blockers.clone(),
+                feel: self.feel,
                 sound_aliases: self.sound_alias_cs.occupied(),
                 effect_names: self.effect_name_cs.occupied(),
                 hud_materials: self.hud_material_cs.occupied(),
@@ -2770,6 +2779,7 @@ impl SimState {
         report.players = adopted_player_count;
 
         self.oriented_blockers = snapshot.meta.oriented_blockers.clone();
+        self.feel = snapshot.meta.feel;
         self.prediction_remote_bodies.clear();
         if let Some(local) = prediction_local {
             self.prediction_remote_bodies.extend(
@@ -3028,6 +3038,14 @@ impl SimState {
         }
     }
 
+    pub(crate) fn feel(&self) -> Option<movement_iw4::Bo2Feel> {
+        self.feel
+    }
+
+    pub(crate) fn set_feel(&mut self, feel: movement_iw4::Bo2Feel) {
+        self.feel = Some(feel);
+    }
+
     pub(crate) fn push_pellet_fx(&mut self, record: crate::PelletFxRecord) {
         if std::env::var_os("IW4L_SHOT_LOG").is_some() {
             diag::info!(
@@ -3038,6 +3056,10 @@ impl SimState {
             );
         }
         self.pellet_fx.push(record);
+    }
+
+    pub(crate) fn push_debris(&mut self, record: crate::DebrisRecord) {
+        self.debris.push(record);
     }
 
     pub(crate) fn scales_for(&self, weapon: u32) -> (f32, f32, f32) {
@@ -3337,6 +3359,7 @@ impl SimState {
         self.shot_collision_verdicts.clear();
         self.projectile_impacts.clear();
         self.pellet_fx.clear();
+        self.debris.clear();
     }
 }
 

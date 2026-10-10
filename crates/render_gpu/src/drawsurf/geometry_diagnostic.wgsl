@@ -40,6 +40,17 @@ struct T6DynLights {
     v: array<vec4<f32>, 32>,
 }
 @group(2) @binding(4) var<uniform> t6_dyn: T6DynLights;
+// bo2mp: Black Ops II's sun shadow partitions (near, far), read with a
+// compare sampler: each one's clip-from-world, then (on, near texel, far
+// texel, depth range), sizes in world units.
+struct SunShadow {
+    near_from_world: mat4x4<f32>,
+    far_from_world: mat4x4<f32>,
+    info: vec4<f32>,
+}
+@group(2) @binding(5) var sun_shadow_map: texture_depth_2d_array;
+@group(2) @binding(6) var sun_shadow_sampler: sampler_comparison;
+@group(2) @binding(7) var<uniform> sun_shadow: SunShadow;
 
 // bo2zm: Black Ops II's lit shaders add such lights ("glights", the lmap
 // pixel shaders' combined_glight path) as colour * saturate(1 - d /
@@ -318,6 +329,39 @@ struct LightRay {
     colour: vec3<f32>,
 }
 
+// bo2mp: one sun partition at a point (its clip position): four compare
+// taps half a texel apart, the point moved toward the sun by a texel and a
+// half plus half a unit so a lit side does not shadow itself.
+fn sun_shadow_partition(layer: i32, clip: vec4<f32>, texel: f32) -> f32 {
+    let uv = clip.xy * vec2(0.5, -0.5) + vec2(0.5);
+    let depth = clip.z - (texel * 1.5 + 0.5) / sun_shadow.info.w;
+    let o = 0.5 / 2048.0;
+    var lit = textureSampleCompareLevel(sun_shadow_map, sun_shadow_sampler, uv + vec2(-o, -o), layer, depth);
+    lit += textureSampleCompareLevel(sun_shadow_map, sun_shadow_sampler, uv + vec2(o, -o), layer, depth);
+    lit += textureSampleCompareLevel(sun_shadow_map, sun_shadow_sampler, uv + vec2(-o, o), layer, depth);
+    lit += textureSampleCompareLevel(sun_shadow_map, sun_shadow_sampler, uv + vec2(o, o), layer, depth);
+    return lit * 0.25;
+}
+
+// bo2mp: how much sun reaches `p` past the things that move (1 = all): the
+// near partition where it covers `p`, else the far one, fading out at its
+// edge; past both, all of it.
+fn sun_shadow_at(p: vec3<f32>) -> f32 {
+    if (sun_shadow.info.x < 0.5) {
+        return 1.0;
+    }
+    let near = sun_shadow.near_from_world * vec4(p, 1.0);
+    if (all(abs(near.xy) < vec2(0.96)) && near.z > 0.0 && near.z < 1.0) {
+        return sun_shadow_partition(0, near, sun_shadow.info.y);
+    }
+    let far = sun_shadow.far_from_world * vec4(p, 1.0);
+    let edge = max(abs(far.x), abs(far.y));
+    if (edge >= 1.0 || far.z <= 0.0 || far.z >= 1.0) {
+        return 1.0;
+    }
+    return mix(sun_shadow_partition(1, far, sun_shadow.info.z), 1.0, smoothstep(0.8, 1.0, edge));
+}
+
 fn primary_light_ray(index: u32, p: vec3<f32>) -> LightRay {
     var ray: LightRay;
     ray.dir = vec3(0.0, 0.0, 1.0);
@@ -332,7 +376,7 @@ fn primary_light_ray(index: u32, p: vec3<f32>) -> LightRay {
     let kind = u32(a.w + 0.5);
     if (kind == 1u) {
         ray.dir = t6.sun_dir_exposure.xyz;
-        ray.colour = t6.sun_color.rgb;
+        ray.colour = t6.sun_color.rgb * sun_shadow_at(p);
         return ray;
     }
     if (kind == 0u) {

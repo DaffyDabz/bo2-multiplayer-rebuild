@@ -1185,7 +1185,7 @@ fn preflight_match_install(
     let fx_models = PreparedFxModels(std::mem::take(&mut prepared.world.fx_models));
     let impact_fx = PreparedImpactFx(std::mem::take(&mut prepared.world.impact_fx));
     let tracers = PreparedTracers(std::mem::take(&mut prepared.tracers));
-    let scene = match world_scene_from_draw(
+    let mut scene = match world_scene_from_draw(
         prepared.world,
         prepared.materials,
         &authority_models.installed_owners,
@@ -1197,6 +1197,7 @@ fn preflight_match_install(
             return Err(InstallRefusal::new(gap));
         }
     };
+    scene.t6_sun_sample_size_near = asset_game::sun_sample_size_near(zone);
     if scene.batches.is_empty() {
         diag::error!(
             World,

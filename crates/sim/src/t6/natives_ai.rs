@@ -715,7 +715,8 @@ pub(super) fn bind(vm: &mut Vm<World>) {
         let id = ClientId(n);
         let amount = int(a, 2).unwrap_or(0);
         let dir = arg(a, 7).as_vec3();
-        let finish = crate::script_player::finish_damage(&mut frame(world), id, amount, dir);
+        let bo2 = !crate::step::bo2_feel_mw2();
+        let finish = crate::script_player::finish_damage(&mut frame(world), id, amount, dir, bo2);
         // bo2mp: in multiplayer a lethal hit kills: the engine's death (body,
         // the client dead), then BO2's own CodeCallback_PlayerKilled (kill
         // feed, score, killcam, respawn).

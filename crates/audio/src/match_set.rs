@@ -22,8 +22,15 @@ impl AudioSilent {
     pub fn active() -> bool {
         static SILENT: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
         *SILENT.get_or_init(|| {
-            std::env::var("IW4L_SOUND").is_ok_and(|value| matches!(value.as_str(), "off" | "0"))
+            frame::Headless::requested()
+                || std::env::var("IW4L_SOUND").is_ok_and(|value| matches!(value.as_str(), "off" | "0"))
         })
+    }
+
+    /// IW4L_HEADLESS=1: no sound device was opened, so no voice ever gets a
+    /// sink. Its starts, loops and stops still run and reach the log.
+    pub fn no_device() -> bool {
+        frame::Headless::requested()
     }
 
     /// Silent runs that log sound (IW4L_SOUND_LOG) still compose the map's
@@ -73,7 +80,10 @@ fn prepared_sample_bytes() -> u64 {
 }
 
 pub(crate) fn register(app: &mut App) {
-    if AudioSilent::active() {
+    if AudioSilent::no_device() {
+        diag::info!(Audio, "audio: Silent (IW4L_HEADLESS=1, no sound device)");
+        app.insert_resource(AudioSilent);
+    } else if AudioSilent::active() {
         diag::info!(Audio, "audio: Silent (IW4L_SOUND=off)");
         app.insert_resource(AudioSilent);
     }

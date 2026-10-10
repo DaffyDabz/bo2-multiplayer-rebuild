@@ -876,12 +876,16 @@ impl ZoneLane for T6Lane {
         // Materials: every world surface's, linked into the lane's catalog
         // with its colour map decoded from the packs beside the zone.
         let stage = progress.begin_scoped(StageId::MapAssets, "materials", None);
-        let packs = match path.parent().map(asset_t6::PackSet::open_dir) {
-            Some(Ok(packs)) => Some(packs),
-            Some(Err(error)) => {
-                report.push(format!("t6 image packs: {error}"));
-                None
-            }
+        // IW4L_HEADLESS=1: nothing is drawn, so no colour map is read or
+        // decoded; the materials still link, without their images.
+        let packs = match path.parent().filter(|_| !frame::Headless::requested()) {
+            Some(dir) => match asset_t6::PackSet::open_dir(dir) {
+                Ok(packs) => Some(packs),
+                Err(error) => {
+                    report.push(format!("t6 image packs: {error}"));
+                    None
+                }
+            },
             None => None,
         };
         let mut materials = material_seed;

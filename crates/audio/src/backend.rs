@@ -156,6 +156,15 @@ fn advance_voice_phases(
                     voice.phase = VoicePhase::Playing;
                     continue;
                 }
+                // IW4L_HEADLESS=1: no device, so no sink comes. A one-shot is
+                // done at once; a loop plays (silently) until it is stopped.
+                if crate::AudioSilent::no_device() {
+                    match voice.kind {
+                        VoiceKind::Oneshot => end_voice(&mut commands, entity, voice.owner),
+                        VoiceKind::Loop => voice.phase = VoicePhase::Playing,
+                    }
+                    continue;
+                }
                 if now.duration_since(voice.started_at) >= STARTING_TIMEOUT {
                     diag::warn!(
                         Audio,

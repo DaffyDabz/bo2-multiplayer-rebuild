@@ -322,7 +322,12 @@ fn run_players_system(ecs: &mut World) {
                 .map(|f| f.ads_frac_context())
                 .unwrap_or((1.0 / 200.0, 1.0 / 200.0, true, false));
             let predicting = !world.publishes_snapshot();
-            let mut feel = bo2_feel(world.ecs(), predicting);
+            let sent = world.feel();
+            let mut feel = bo2_feel(world.ecs(), predicting, sent);
+            if !predicting {
+                // Every snapshot carries the rules to the other PCs.
+                world.set_feel(feel);
+            }
             if feel.on
                 && let Some(f) = facts
             {
@@ -375,7 +380,7 @@ fn run_players_system(ecs: &mut World) {
             }
             crate::script::player_commands(world.ecs(), id.0, cmd.buttons, old_buttons);
             let mut cmd = *cmd;
-            crate::script_player::constrain_cmd(&mut world, *id, &mut cmd);
+            crate::script_player::constrain_cmd(&mut world, *id, &mut cmd, feel.zombies);
             crate::script::select_location(world.ecs(), id.0, &mut cmd, old_buttons);
             if world
                 .client_meta(*id)
@@ -426,6 +431,10 @@ fn run_players_system(ecs: &mut World) {
 
                 if ps.shellshock_time.wrapping_add(ps.shellshock_duration) < level_time {
                     ps.pm_flags &= !playerstate_iw4::pm_flags::SHELLSHOCKED;
+                }
+                // bo2zm: BO2 sets the walk speed every frame (move-faster +7%).
+                if let Some(speed) = movement_iw4::player_speed(ps, feel) {
+                    ps.speed = speed;
                 }
                 let moved_from = ps.origin;
                 let result = pmove(
@@ -2064,15 +2073,21 @@ static HOST_FEEL: std::sync::Mutex<Option<movement_iw4::Bo2Feel>> = std::sync::M
 /// bo2zm: the Black Ops II movement rules, on in a Black Ops II game.
 /// `BO2_FEEL=mw2` turns them off (the old MW2 movement) for side-by-side
 /// clips. Values the scripts set win over the defaults. `predicting` = this
-/// is the local player's guess, not the game itself.
-fn bo2_feel(ecs: &World, predicting: bool) -> movement_iw4::Bo2Feel {
+/// is the local player's guess, not the game itself; `sent` = the rules the
+/// game sent in its last snapshot.
+fn bo2_feel(
+    ecs: &World,
+    predicting: bool,
+    sent: Option<movement_iw4::Bo2Feel>,
+) -> movement_iw4::Bo2Feel {
     // The Black Ops II scripts' own dvars (setdvar); none = no T6 game.
     let Some(t6) = ecs.get_resource::<crate::t6::T6Runtime>() else {
         if predicting {
-            return HOST_FEEL
-                .lock()
-                .ok()
-                .and_then(|f| *f)
+            // The game's own rules first: a second PC has no scripts (it
+            // guessed with MW2's), and a game hosted here before may have
+            // left its rules behind.
+            return sent
+                .or_else(|| HOST_FEEL.lock().ok().and_then(|f| *f))
                 .unwrap_or(movement_iw4::Bo2Feel::IW4);
         }
         if let Ok(mut f) = HOST_FEEL.lock() {
@@ -2087,12 +2102,15 @@ fn bo2_feel(ecs: &World, predicting: bool) -> movement_iw4::Bo2Feel {
     feel
 }
 
-fn bo2_feel_from(t6: &crate::t6::T6Runtime) -> movement_iw4::Bo2Feel {
+/// bo2zm: `BO2_FEEL=mw2`: the old MW2 rules in a Black Ops II game.
+pub(crate) fn bo2_feel_mw2() -> bool {
     static MW2: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *MW2.get_or_init(|| std::env::var("BO2_FEEL").is_ok_and(|v| v.eq_ignore_ascii_case("mw2")))
+}
+
+fn bo2_feel_from(t6: &crate::t6::T6Runtime) -> movement_iw4::Bo2Feel {
     static OMNI: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    let mw2 =
-        *MW2.get_or_init(|| std::env::var("BO2_FEEL").is_ok_and(|v| v.eq_ignore_ascii_case("mw2")));
-    if mw2 {
+    if bo2_feel_mw2() {
         return movement_iw4::Bo2Feel::IW4;
     }
     let number = |name: &str, default: f32| {
@@ -2128,6 +2146,10 @@ fn bo2_feel_from(t6: &crate::t6::T6Runtime) -> movement_iw4::Bo2Feel {
         // sprint at least 1.1 times the gun's speed.
         longer_sprint_perk: movement_iw4::PERK_LONGERSPRINT,
         sprint_multiplier: number("perk_sprintMultiplier", 2.0),
+        // Move-faster: the walk speed x perk_speedMultiplier (190 -> 203).
+        move_faster_perk: movement_iw4::PERK_MOVEFASTER,
+        speed_multiplier: number("perk_speedMultiplier", 1.07),
+        g_speed: number("g_speed", 190.0),
         // dtp: BO2's dive to prone switch, on in both modes.
         dive: number("dtp", 1.0) != 0.0,
         // Set per player from the gun in hand.
@@ -2177,6 +2199,12 @@ fn pmove_context(
                 weapon_ads_move_speed_scale: weapon_scales.1,
 
                 shellshock_movement_scale,
+                // BO2 feel M10b: going prone takes 600 ms (MW2 400).
+                prone_lerp_ms: if feel.on {
+                    movement_iw4::PRONE_LERP_MS
+                } else {
+                    0
+                },
             },
             weapon_move_scale: 1.0,
             old_buttons,
@@ -2276,6 +2304,38 @@ pub(crate) fn arm_held_weapon(
     }
     seed_ps_ammo_tables(ps, weapon, facts, clip0, clip1, last_hand >= 1, stock);
     (clip0, stock)
+}
+
+#[cfg(test)]
+mod sent_feel_tests {
+    use super::*;
+
+    fn zombies_feel() -> movement_iw4::Bo2Feel {
+        movement_iw4::Bo2Feel {
+            on: true,
+            zombies: true,
+            g_speed: 175.0,
+            ..movement_iw4::Bo2Feel::IW4
+        }
+    }
+
+    #[test]
+    fn a_second_pc_guesses_with_the_rules_the_game_sent() {
+        let feel = zombies_feel();
+        assert_eq!(bo2_feel(&World::new(), true, Some(feel)), feel);
+    }
+
+    #[test]
+    fn the_snapshot_carries_the_rules_to_the_other_pc() {
+        let feel = zombies_feel();
+        let mut host = crate::carrier::SimWorld::default();
+        host.frame().set_feel(feel);
+        let snapshot = host.snapshot(crate::world::Tick(1));
+        assert_eq!(snapshot.meta.feel, Some(feel));
+        let mut guess = crate::carrier::SimWorld::default();
+        guess.adopt_snapshot(&snapshot);
+        assert_eq!(guess.frame().feel(), Some(feel));
+    }
 }
 
 #[cfg(test)]

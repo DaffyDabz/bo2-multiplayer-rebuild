@@ -674,3 +674,22 @@ pub fn read_basemaps_arena(games_root: &Path) -> Option<String> {
 pub fn read_iwd_named(games_root: &Path, want: &str) -> Option<Vec<u8>> {
     asset_transport::read_iwd_named(games_root, want)
 }
+
+/// bo2mp: the map's `sm_sunSampleSizeNear`, the world units per texel of
+/// the near sun-shadow partition, as each Black Ops II multiplayer map's
+/// client script sets it (`_load.csc` sets 0.5 first; these maps set their
+/// own after it).
+#[must_use]
+pub fn sun_sample_size_near(zone: &str) -> f32 {
+    match zone.rsplit(':').next().unwrap_or(zone) {
+        "mp_overflow" => 0.2,
+        "mp_bridge" | "mp_dig" | "mp_frostbite" | "mp_pod" => 0.25,
+        "mp_castaway" => 0.26,
+        "mp_studio" | "mp_takeoff" => 0.3,
+        "mp_hydro" | "mp_paintball" => 0.35,
+        "mp_carrier" | "mp_drone" | "mp_express" | "mp_la" | "mp_mirage" | "mp_nightclub"
+        | "mp_socotra" | "mp_turbine" => 0.39,
+        "mp_magma" => 0.45,
+        _ => 0.5,
+    }
+}

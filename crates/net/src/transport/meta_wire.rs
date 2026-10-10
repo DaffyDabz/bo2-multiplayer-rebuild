@@ -10,7 +10,7 @@ use sim::{
     EntityKernelSnapshot, EntityRef, EntityRelations, EntityRunKind, EventAudience, EventRecord,
     EventSequence, GiveRejectReason, GlassCause, GlassPieceSnapshot, GlassPieceState,
     GlassShatterSeed, ItemPickupRecord, LifeSequence, LoadoutSpec, MatchEndReason, MatchPhase,
-    PelletFxRecord, PlayerCorpsePool, PlayerCorpseSlot, RngDebugMeta, ScriptModelId, SimEvent,
+    DebrisRecord, PelletFxRecord, PlayerCorpsePool, PlayerCorpseSlot, RngDebugMeta, ScriptModelId, SimEvent,
     SnapshotMeta, SpawnPick, Tick, WorldObjectSnapshot,
 };
 
@@ -710,11 +710,17 @@ pub fn encode_snapshot_meta_sections(
     for record in &meta.pellet_fx {
         encode_pellet_fx_record(out, record);
     }
+    debug_assert!(meta.debris.len() <= u16::MAX as usize);
+    out.put_u16(meta.debris.len() as u16);
+    for record in &meta.debris {
+        encode_debris_record(out, record);
+    }
     debug_assert!(meta.oriented_blockers.len() <= u16::MAX as usize);
     out.put_u16(meta.oriented_blockers.len() as u16);
     for blocker in &meta.oriented_blockers {
         encode_oriented_blocker(out, blocker);
     }
+    encode_feel(out, meta.feel.as_ref());
     sizes.events = section_span(out, mark);
     mark = out.len();
     encode_sound_alias_cs(out, &meta.sound_aliases);
@@ -795,11 +801,17 @@ pub fn decode_snapshot_meta(
     for _ in 0..pellet_fx_count {
         pellet_fx.push(decode_pellet_fx_record(input)?);
     }
+    let debris_count = input.get_u16()? as usize;
+    let mut debris = Vec::with_capacity(debris_count.min(64));
+    for _ in 0..debris_count {
+        debris.push(decode_debris_record(input)?);
+    }
     let blocker_count = input.get_u16()? as usize;
     let mut oriented_blockers = Vec::with_capacity(blocker_count.min(64));
     for _ in 0..blocker_count {
         oriented_blockers.push(decode_oriented_blocker(input)?);
     }
+    let feel = decode_feel(input)?;
     let sound_aliases = decode_sound_alias_cs(input)?;
     let effect_names = decode_sound_alias_cs(input)?;
     let hud_materials = decode_sound_alias_cs(input)?;
@@ -830,7 +842,9 @@ pub fn decode_snapshot_meta(
             journal,
             entity_events,
             pellet_fx,
+            debris,
             oriented_blockers,
+            feel,
             sound_aliases,
             effect_names,
             hud_materials,
@@ -1096,6 +1110,88 @@ fn decode_entity_event_record(input: &mut WireReader<'_>) -> Result<EntityEventR
     })
 }
 
+/// bo2zm: the movement rules (`SnapshotMeta::feel`): a flag byte (bit 0 =
+/// sent; then on, jump slowdown, zombies, dive, omni), then the numbers.
+fn encode_feel(out: &mut WireWriter, feel: Option<&movement_iw4::Bo2Feel>) {
+    let Some(f) = feel else {
+        out.put_u8(0);
+        return;
+    };
+    let flags = [true, f.on, f.jump_slowdown, f.zombies, f.dive, f.omni]
+        .into_iter()
+        .enumerate()
+        .fold(0u8, |acc, (bit, on)| acc | (u8::from(on) << bit));
+    out.put_u8(flags);
+    for v in [
+        f.sprint_strafe_speed_scale,
+        f.fall_damage_min_height,
+        f.fall_damage_max_height,
+        f.fast_ads_multiplier,
+        f.sprint_multiplier,
+        f.speed_multiplier,
+        f.g_speed,
+        f.sprint_cycle_scale,
+        f.ducked_sprint_cycle_scale,
+        f.dtp_cycle_scale,
+        f.mantle_weapon_height,
+        f.mantle_weapon_anim_height,
+    ] {
+        out.put_f32(v);
+    }
+    out.put_i32(f.gravity);
+    for v in [
+        f.fall_damage_perk,
+        f.flak_jacket_perk,
+        f.fast_ads_perk,
+        f.longer_sprint_perk,
+        f.move_faster_perk,
+    ] {
+        out.put_u32(v);
+    }
+}
+
+fn decode_feel(input: &mut WireReader<'_>) -> Result<Option<movement_iw4::Bo2Feel>, WireError> {
+    let flags = input.get_u8()?;
+    if flags & 1 == 0 {
+        return Ok(None);
+    }
+    let mut n = [0.0f32; 12];
+    for v in &mut n {
+        *v = input.get_f32()?;
+    }
+    let gravity = input.get_i32()?;
+    let mut perk = [0u32; 5];
+    for v in &mut perk {
+        *v = input.get_u32()?;
+    }
+    let bit = |b: u8| flags & (1 << b) != 0;
+    Ok(Some(movement_iw4::Bo2Feel {
+        on: bit(1),
+        sprint_strafe_speed_scale: n[0],
+        jump_slowdown: bit(2),
+        fall_damage_min_height: n[1],
+        fall_damage_max_height: n[2],
+        zombies: bit(3),
+        gravity,
+        fall_damage_perk: perk[0],
+        flak_jacket_perk: perk[1],
+        fast_ads_perk: perk[2],
+        fast_ads_multiplier: n[3],
+        longer_sprint_perk: perk[3],
+        sprint_multiplier: n[4],
+        move_faster_perk: perk[4],
+        speed_multiplier: n[5],
+        g_speed: n[6],
+        dive: bit(4),
+        sprint_cycle_scale: n[7],
+        ducked_sprint_cycle_scale: n[8],
+        dtp_cycle_scale: n[9],
+        omni: bit(5),
+        mantle_weapon_height: n[10],
+        mantle_weapon_anim_height: n[11],
+    }))
+}
+
 fn encode_oriented_blocker(out: &mut WireWriter, blocker: &sim::OrientedBlocker) {
     out.put_u16(blocker.entnum);
     let vectors = [
@@ -1163,6 +1259,46 @@ fn decode_pellet_fx_record(input: &mut WireReader<'_>) -> Result<PelletFxRecord,
         surf_type: input.get_u8()?,
         surface_flags: input.get_u32()?,
         flesh_flags: input.get_u8()?,
+    })
+}
+
+fn encode_debris_record(out: &mut WireWriter, record: &DebrisRecord) {
+    let bytes = record.model.as_bytes();
+    debug_assert!(bytes.len() <= u8::MAX as usize);
+    out.put_u8(bytes.len().min(u8::MAX as usize) as u8);
+    out.put_bytes(&bytes[..bytes.len().min(u8::MAX as usize)]);
+    for value in record
+        .origin
+        .iter()
+        .chain(&record.rotation)
+        .chain(&record.velocity)
+    {
+        out.put_f32(*value);
+    }
+    out.put_f32(record.mass);
+    out.put_f32(record.bounce);
+    out.put_f32(record.friction);
+    out.put_f32(record.bullet_force_scale);
+    out.put_f32(record.explosive_force_scale);
+}
+
+fn decode_debris_record(input: &mut WireReader<'_>) -> Result<DebrisRecord, WireError> {
+    let len = input.get_u8()? as usize;
+    let mut bytes = vec![0u8; len];
+    input.get_bytes(&mut bytes)?;
+    let model =
+        String::from_utf8(bytes).map_err(|_| WireError::Malformed("debris model is not utf-8"))?;
+    let mut f = || input.get_f32();
+    Ok(DebrisRecord {
+        model,
+        origin: [f()?, f()?, f()?],
+        rotation: [f()?, f()?, f()?, f()?],
+        velocity: [f()?, f()?, f()?],
+        mass: f()?,
+        bounce: f()?,
+        friction: f()?,
+        bullet_force_scale: f()?,
+        explosive_force_scale: f()?,
     })
 }
 
@@ -1249,6 +1385,23 @@ fn encode_client_meta(out: &mut WireWriter, meta: &ClientSnapshotMeta) {
     out.put_u8(meta.controls.linked.into());
     out.put_u8(meta.controls.stunned.into());
     out.put_u32(meta.controls.switch_to);
+    // bo2zm: the allow* switches, one bit each, so his own guess at his
+    // movement drops the same requests the server does.
+    let c = &meta.controls;
+    let allow = [
+        c.prone_disabled,
+        c.crouch_disabled,
+        c.stand_disabled,
+        c.sprint_disabled,
+        c.melee_disabled,
+        c.ads_disabled,
+    ];
+    out.put_u8(
+        allow
+            .iter()
+            .enumerate()
+            .fold(0, |bits, (i, &off)| bits | (u8::from(off) << i)),
+    );
     match meta.killcam_hud {
         None => out.put_u8(0),
         Some(hud) => out.put_u8(if hud.final_kill { 2 } else { 1 }),
@@ -1395,7 +1548,7 @@ fn encode_client_meta(out: &mut WireWriter, meta: &ClientSnapshotMeta) {
 }
 
 fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, WireError> {
-    let controls = sim::ScriptControls {
+    let mut controls = sim::ScriptControls {
         frozen: input.get_u8()? != 0,
         weapons_disabled: input.get_u8()? != 0,
         offhands_disabled: input.get_u8()? != 0,
@@ -1407,6 +1560,13 @@ fn decode_client_meta(input: &mut WireReader<'_>) -> Result<ClientSnapshotMeta, 
         switch_to: input.get_u32()?,
         ..sim::ScriptControls::default()
     };
+    let allow = input.get_u8()?;
+    controls.prone_disabled = allow & 1 != 0;
+    controls.crouch_disabled = allow & 2 != 0;
+    controls.stand_disabled = allow & 4 != 0;
+    controls.sprint_disabled = allow & 8 != 0;
+    controls.melee_disabled = allow & 16 != 0;
+    controls.ads_disabled = allow & 32 != 0;
     let killcam_hud = match input.get_u8()? {
         0 => None,
         tag @ (1 | 2) => Some(sim::KillcamHud {
@@ -3093,4 +3253,134 @@ fn decode_objectives(input: &mut WireReader<'_>) -> Result<sim::ObjectiveMatch, 
         });
     }
     Ok(state)
+}
+
+#[cfg(test)]
+mod allow_wire_tests {
+    use super::*;
+
+    #[test]
+    fn each_allow_switch_reaches_the_client() {
+        for bit in 0..6 {
+            let mut meta = ClientSnapshotMeta::default();
+            let c = &mut meta.controls;
+            let switch = [
+                &mut c.prone_disabled,
+                &mut c.crouch_disabled,
+                &mut c.stand_disabled,
+                &mut c.sprint_disabled,
+                &mut c.melee_disabled,
+                &mut c.ads_disabled,
+            ];
+            *switch.into_iter().nth(bit).unwrap() = true;
+            meta.controls.stunned = true;
+            meta.controls.switch_to = 7;
+            let mut out = WireWriter::new();
+            encode_client_meta(&mut out, &meta);
+            let bytes = out.finish();
+            let back = decode_client_meta(&mut WireReader::new(&bytes)).unwrap();
+            assert_eq!(back.controls, meta.controls, "switch {bit}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod feel_wire_tests {
+    use super::*;
+
+    /// Every field a different value, so a missed or swapped one shows.
+    fn odd_feel(flags: u8) -> movement_iw4::Bo2Feel {
+        let bit = |b: u8| flags & (1 << b) != 0;
+        movement_iw4::Bo2Feel {
+            on: bit(0),
+            sprint_strafe_speed_scale: 1.5,
+            jump_slowdown: bit(1),
+            fall_damage_min_height: 2.5,
+            fall_damage_max_height: 3.5,
+            zombies: bit(2),
+            gravity: 4,
+            fall_damage_perk: 5,
+            flak_jacket_perk: 6,
+            fast_ads_perk: 7,
+            fast_ads_multiplier: 8.5,
+            longer_sprint_perk: 9,
+            sprint_multiplier: 10.5,
+            move_faster_perk: 11,
+            speed_multiplier: 12.5,
+            g_speed: 13.5,
+            dive: bit(3),
+            sprint_cycle_scale: 14.5,
+            ducked_sprint_cycle_scale: 15.5,
+            dtp_cycle_scale: 16.5,
+            omni: bit(4),
+            mantle_weapon_height: 17.5,
+            mantle_weapon_anim_height: 18.5,
+        }
+    }
+
+    #[test]
+    fn the_rules_reach_the_second_pc_whole() {
+        for flags in [
+            0u8, 0b1_1111, 0b0_0001, 0b0_0010, 0b0_0100, 0b0_1000, 0b1_0000,
+        ] {
+            let meta = SnapshotMeta {
+                feel: Some(odd_feel(flags)),
+                ..SnapshotMeta::default()
+            };
+            let wire = encode_world_object_sync(
+                &mut WorldObjectSyncEncoder::default(),
+                Tick(1),
+                &meta.world_objects,
+            );
+            let mut out = WireWriter::new();
+            encode_snapshot_meta(&mut out, &meta, &wire);
+            let bytes = out.finish();
+            let (back, _) = decode_snapshot_meta(
+                &mut WireReader::new(&bytes),
+                &mut WorldObjectSyncDecoder::default(),
+            )
+            .unwrap();
+            assert_eq!(back.feel, meta.feel, "flags {flags:#b}");
+        }
+    }
+
+    #[test]
+    fn a_broken_off_piece_reaches_the_second_pc_whole() {
+        let meta = SnapshotMeta {
+            debris: vec![DebrisRecord {
+                model: "nt_nuked_female_05_head".into(),
+                origin: [916.5, 421.9, 4.0],
+                rotation: [0.0, 0.0, 0.70710677, 0.70710677],
+                velocity: [-400.0, 0.5, 30.0],
+                mass: 0.002,
+                bounce: 0.3,
+                friction: 0.6,
+                bullet_force_scale: 1.0,
+                explosive_force_scale: 0.1,
+            }],
+            ..SnapshotMeta::default()
+        };
+        let wire = encode_world_object_sync(
+            &mut WorldObjectSyncEncoder::default(),
+            Tick(1),
+            &meta.world_objects,
+        );
+        let mut out = WireWriter::new();
+        encode_snapshot_meta(&mut out, &meta, &wire);
+        let bytes = out.finish();
+        let (back, _) = decode_snapshot_meta(
+            &mut WireReader::new(&bytes),
+            &mut WorldObjectSyncDecoder::default(),
+        )
+        .unwrap();
+        assert_eq!(back.debris, meta.debris);
+    }
+
+    #[test]
+    fn no_rules_sent_stays_none() {
+        let mut out = WireWriter::new();
+        encode_feel(&mut out, None);
+        let bytes = out.finish();
+        assert_eq!(decode_feel(&mut WireReader::new(&bytes)).unwrap(), None);
+    }
 }

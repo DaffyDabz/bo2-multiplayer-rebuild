@@ -135,8 +135,8 @@ fn main() {
             );
             for (i, p) in d.pieces.iter().enumerate() {
                 println!(
-                    "  piece {i}: parent {} health {} bullet x{} hide_bones {:08x?}",
-                    p.parent_piece, p.health, p.bullet_damage_scale, p.hide_bones
+                    "  piece {i}: parent {} health {} bullet x{} hide_bones {:08x?} constraint {:?}",
+                    p.parent_piece, p.health, p.bullet_damage_scale, p.hide_bones, p.constraint
                 );
                 for (k, st) in p.stages.iter().enumerate() {
                     if st.show_bone.is_empty() && st.break_health == 0.0 && k > 0 {
@@ -146,6 +146,15 @@ fn main() {
                         "    stage {k}: show `{}` break_health {} flags {:x} phys {} spawn {:?}",
                         st.show_bone, st.break_health, st.flags, st.phys_preset, st.spawn_models
                     );
+                    for m in st.spawn_models.iter().filter(|m| !m.is_empty()) {
+                        let preset = c
+                            .xmodels
+                            .iter()
+                            .find(|x| x.name.trim_start_matches(',') == m)
+                            .and_then(|x| x.phys_preset)
+                            .and_then(|k| c.phys_presets.get(k.index));
+                        println!("      {m}: preset {preset:?}");
+                    }
                 }
             }
         }

@@ -161,6 +161,10 @@ pub fn play_pellet_segment(
     surf_type: u8,
     surface_flags: u32,
     flesh_flags: u32,
+    // bo2mp: false for the hit on the local player's own body: Black Ops
+    // II's own-hit event only sounds; his game never draws the puff on
+    // himself.
+    impact: bool,
     world_bolts: &Query<&render_anim::RemoteFxBolts>,
     fpv_bolts: &render_anim::FpvBoltTargets,
     slots: &CEntitySlots,
@@ -270,6 +274,10 @@ pub fn play_pellet_segment(
                 cursor.tracer_from_tag = cursor.tracer_from_tag.saturating_add(1);
             }
         }
+    }
+    if !impact {
+        sync_combat_dump(cursor, combat);
+        return;
     }
     if normal == [0.0, 0.0, 0.0] {
         cursor.impact_miss_table = cursor.impact_miss_table.saturating_add(1);

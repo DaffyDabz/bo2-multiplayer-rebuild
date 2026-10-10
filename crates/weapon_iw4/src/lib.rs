@@ -123,7 +123,10 @@ pub use spread::{
     get_spread_for_weapon, perk_weap_spread_multiplier,
 };
 pub use crawl::weapon_crawl_anim;
-pub use sprint::{weapon_advance_sprint, weapon_check_for_sprint, weapon_dive_anim};
+pub use sprint::{
+    PERK_SPRINTRECOVERY, SPRINT_RECOVERY_MULTIPLIER, weapon_advance_sprint, weapon_check_for_sprint,
+    weapon_dive_anim,
+};
 pub use sway::{
     SWAY_FRAME_HZ, SWAY_SHELLSHOCK_SMOOTH_PEAK, SwayContribution, SwaySpringState, TRACK_SNAP_EPS,
     WeaponSwayParams, angle_delta, angle_normalize_180, calculate_weapon_movement_sway, clamp_abs,
@@ -149,6 +152,10 @@ pub use view_bob::{
     view_damage_angles, view_kick_amplitude, view_org_bob, viewweapon_land_origin_z,
 };
 pub use view_bob::{BG_VIEW_KICK_MIN_BO2, VIEW_BOB_AMP_PRONE_BO2, damage_feedback_kick_min}; // bo2zm
+pub use view_bob::{
+    BG_VIEW_KICK_SCALE_BO2, BO2_AIM_SPREAD_MAX, PERK_BULLETFLINCH, PERK_DAMAGE_KICK_REDUCTION,
+    damage_feedback_bo2, damage_feedback_kick_bo2, view_kick_amplitude_bo2,
+}; // bo2zm
 pub use viewmodel::get_viewmodel_weapon_index;
 pub use viewweapon::{
     viewweapon_composed_world_forward, viewweapon_iron_ads_saves_composed_axis,

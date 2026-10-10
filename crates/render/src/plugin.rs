@@ -30,13 +30,18 @@ impl Plugin for RenderPlugin {
             Update,
             publish_overhead_posed_players
                 .after(frame::WorkerCmdSet::SkinModel)
+                .after(render_anim::occupancy::t6_body::T6BodyPosesPublished)
                 .in_set(hud::OverheadPosedPlayerFramePublished)
                 .in_set(ClientSet::Present),
         );
 
         crate::diag::acceptance::register_acceptance_systems(app);
         register_render_frame_diag(app);
-        app.add_systems(Update, sample_render_frame_diag.in_set(ClientSet::Diag));
+        // IW4L_HEADLESS=1: no render world, so every column would stay NULL;
+        // a headless run keeps its log (and the disk) quiet instead.
+        if app.get_sub_app(bevy::render::RenderApp).is_some() {
+            app.add_systems(Update, sample_render_frame_diag.in_set(ClientSet::Diag));
+        }
         register_frame_spans(app);
         app.init_resource::<CaptureQueue>().add_systems(
             Update,

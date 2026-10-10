@@ -161,10 +161,20 @@ pub(crate) fn force_death(world: &mut World, tick: crate::Tick, client: u32) {
 }
 
 const GIVE_KILLSTREAK: &str = "maps/mp/killstreaks/_killstreaks::trygivekillstreak";
+const T6_GIVE_KILLSTREAK: &str = "maps/mp/killstreaks/_killstreaks::givekillstreak";
 
 pub(crate) fn give_killstreak(world: &mut World, client: u32, name: &str) {
     let me = player_object(world, client);
     if me == Value::Undefined {
+        return;
+    }
+    // bo2mp: Black Ops II gives a scorestreak by its type
+    // (`remote_missile_mp`), found from its menu name
+    // (`killstreak_remote_missile`) as its own streak counter does.
+    if is_t5(world) {
+        let kind = t6_streak_type(world, name).unwrap_or_else(|| Value::string(name));
+        let now = now_ms(world);
+        let _ = run_now(world, T6_GIVE_KILLSTREAK, me, vec![kind], now);
         return;
     }
     let lookup = [
@@ -184,6 +194,22 @@ pub(crate) fn give_killstreak(world: &mut World, client: u32, name: &str) {
         vec![Value::string(name), Value::Int(cost)],
         now,
     );
+}
+
+/// `level.menureferenceforkillstreak[name]`: a scorestreak's type from its
+/// menu name.
+fn t6_streak_type(world: &World, name: &str) -> Option<Value> {
+    let runtime = world.resource::<Runtime>();
+    let Value::Array(id) = super::restart::field(&runtime, 0, "menureferenceforkillstreak")?
+    else {
+        return None;
+    };
+    runtime
+        .arrays
+        .get(&id)?
+        .get(&crate::script::value::ArrayKey::String(Arc::from(name)))
+        .cloned()
+        .filter(|kind| *kind != Value::Undefined)
 }
 
 pub(crate) fn settle_deaths(world: &mut World) {

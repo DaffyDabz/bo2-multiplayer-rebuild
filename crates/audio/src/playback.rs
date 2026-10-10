@@ -147,6 +147,16 @@ pub(crate) struct PlayerSoundPlugin;
 
 impl Plugin for PlayerSoundPlugin {
     fn build(&self, app: &mut App) {
+        if app.is_plugin_added::<bevy::audio::AudioPlugin>() {
+            app.add_audio_source::<PcmAudio>()
+                .add_audio_source::<LoopingPcmAudio>();
+        } else {
+            // IW4L_HEADLESS=1: no sound device, so nothing plays the clips;
+            // they are still assets, and the volume setting still has a home.
+            app.init_asset::<PcmAudio>()
+                .init_asset::<LoopingPcmAudio>()
+                .init_resource::<bevy::audio::GlobalVolume>();
+        }
         app.init_resource::<SoundPickState>()
             .init_resource::<crate::clip_store::ResidentClipCache>()
             .init_resource::<MissingAliasGaps>()
@@ -158,8 +168,6 @@ impl Plugin for PlayerSoundPlugin {
             .init_resource::<crate::ambient::SoundBankLoadAttempted>()
             .init_resource::<crate::ambient::ResidentSoundBank>()
             .init_resource::<crate::BobCycleTracker>()
-            .add_audio_source::<PcmAudio>()
-            .add_audio_source::<LoopingPcmAudio>()
             .add_message::<AliasCommand>()
             .add_message::<Footstep>()
             .add_message::<WeaponSound>()

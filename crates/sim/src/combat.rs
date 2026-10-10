@@ -1332,6 +1332,11 @@ pub(crate) fn phase_trace(
                             owner,
                             bone,
                             scaled as u32,
+                            [
+                                segment.end[0] - em.origin[0],
+                                segment.end[1] - em.origin[1],
+                                segment.end[2] - em.origin[2],
+                            ],
                             Some(em.attacker),
                             em.weapon,
                         )

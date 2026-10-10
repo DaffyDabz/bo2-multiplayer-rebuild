@@ -412,7 +412,18 @@ pub(crate) fn install(world: &mut World, inst: T6Install) -> Result<(), String> 
         objects.extend(mp::engine_scripts()?);
     }
     let mut strings = Strings::default();
-    let program = Program::link(objects, &mut strings)?;
+    // bo2mp: Black Ops II's linker binds a bare call to the engine's own
+    // function when the engine has one, before the script's or its
+    // includes'. These are the multiplayer names a script also defines
+    // (_spawning's clearspawnpoints() must not run _spawnlogic's, which
+    // empties the spawn lists).
+    const ENGINE_FIRST: &[(&str, bool)] = &[
+        ("addspawnpoints", false),
+        ("clearspawnpoints", false),
+        ("vectorcross", false),
+        ("suicide", true),
+    ];
+    let program = Program::link_with(objects, &mut strings, if mp { ENGINE_FIRST } else { &[] })?;
     let functions = program.functions.len();
     let builtins = program.builtins.len();
     let mut vm: Vm<World> = Vm::new(program, strings);
@@ -1363,6 +1374,7 @@ pub(crate) fn entity_hit(world: &mut World, hit: &crate::script::EntityHit) -> b
                 hit.bone.and_then(|b| u16::try_from(b).ok()),
                 hit.amount,
                 destructible::kind(hit.means),
+                Some(hit.dir),
                 hit.attacker,
                 hit.weapon,
             );

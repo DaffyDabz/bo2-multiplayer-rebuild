@@ -101,6 +101,20 @@ pub(super) fn end_shock(world: &mut World, n: u32, why: &str) {
     );
 }
 
+/// BO2's `allow*`: sets the switch and returns whether it was allowed before
+/// (scripts keep it: `prone = self allowprone( 0 ); ... self allowprone( prone );`).
+fn allow(
+    vm: &Vm<World>,
+    world: &mut World,
+    s: &Value,
+    swap: impl FnOnce(&mut crate::match_state::ScriptControls) -> bool,
+) -> R {
+    let id = client(vm, world, s)?;
+    let mut f = frame(world);
+    let was_off = f.client_meta(id).is_some() && swap(&mut f.client_meta_mut(id).controls);
+    Ok(Value::Int(if was_off { 0 } else { 1 }))
+}
+
 pub(super) fn bind(vm: &mut Vm<World>) {
     macro_rules! m {
         ($name:literal, $body:expr) => {
@@ -335,30 +349,43 @@ pub(super) fn bind(vm: &mut Vm<World>) {
         s,
         |c| c.switch_disabled = false
     ));
-    // bo2mp: BO2's `allow*` (false drops the request in constrain_cmd).
+    // bo2mp: BO2's `allow*` (false drops the request in constrain_cmd;
+    // the answer is whether it was allowed before, as BO2's).
     m!("allowprone", |vm, world, s, a| {
         let on = flag(a, 0, true);
-        controls(vm, world, s, |c| c.prone_disabled = !on)
+        allow(vm, world, s, |c| {
+            std::mem::replace(&mut c.prone_disabled, !on)
+        })
     });
     m!("allowcrouch", |vm, world, s, a| {
         let on = flag(a, 0, true);
-        controls(vm, world, s, |c| c.crouch_disabled = !on)
+        allow(vm, world, s, |c| {
+            std::mem::replace(&mut c.crouch_disabled, !on)
+        })
     });
     m!("allowstand", |vm, world, s, a| {
         let on = flag(a, 0, true);
-        controls(vm, world, s, |c| c.stand_disabled = !on)
+        allow(vm, world, s, |c| {
+            std::mem::replace(&mut c.stand_disabled, !on)
+        })
     });
     m!("allowsprint", |vm, world, s, a| {
         let on = flag(a, 0, true);
-        controls(vm, world, s, |c| c.sprint_disabled = !on)
+        allow(vm, world, s, |c| {
+            std::mem::replace(&mut c.sprint_disabled, !on)
+        })
     });
     m!("allowmelee", |vm, world, s, a| {
         let on = flag(a, 0, true);
-        controls(vm, world, s, |c| c.melee_disabled = !on)
+        allow(vm, world, s, |c| {
+            std::mem::replace(&mut c.melee_disabled, !on)
+        })
     });
     m!("allowads", |vm, world, s, a| {
         let on = flag(a, 0, true);
-        controls(vm, world, s, |c| c.ads_disabled = !on)
+        allow(vm, world, s, |c| {
+            std::mem::replace(&mut c.ads_disabled, !on)
+        })
     });
     // bo2mp: `setmovespeedscale(f)` is the player's own scale; a shellshock's
     // `bg_shock_movement` rides on top while it lasts (`getmovespeedscale`

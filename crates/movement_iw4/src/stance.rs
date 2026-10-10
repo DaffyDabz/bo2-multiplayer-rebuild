@@ -194,9 +194,14 @@ pub fn view_height_lerp_duration(lerp_target: i32, lerp_down: i32) -> i32 {
 }
 
 /// bo2zm: getting up from a dive runs the stance change at twice the speed
-/// (an owner's ask).
-fn lerp_duration(ps: &PlayerState, lerp_target: i32, lerp_down: i32) -> i32 {
-    let duration = view_height_lerp_duration(lerp_target, lerp_down);
+/// (an owner's ask, 10-09). `prone_ms` is the crouch-to-prone stage's time
+/// (BO2 600; 0 = MW2's 400).
+fn lerp_duration(ps: &PlayerState, lerp_target: i32, lerp_down: i32, prone_ms: i32) -> i32 {
+    let duration = if lerp_target == view_height::PRONE && prone_ms > 0 {
+        prone_ms
+    } else {
+        view_height_lerp_duration(lerp_target, lerp_down)
+    };
     if ps.pm_flags & crate::dive::PMF_DIVE_GETUP != 0 {
         duration / 2
     } else {
@@ -291,7 +296,7 @@ const LAST_STAND_VIEW_HEIGHT_RATE: f32 = 120.0;
 const REVERSE_REWIND_SCALE: f32 = 0.01;
 
 #[allow(clippy::too_many_lines)]
-pub fn update_view_height(ps: &mut PlayerState, pml: &Pml, cmd: &UserCmd) {
+pub fn update_view_height(ps: &mut PlayerState, pml: &Pml, cmd: &UserCmd, prone_lerp_ms: i32) {
     let target = ps.view_height_target;
     if target == 0 || ps.view_height_current == 0.0 {
         ps.view_height_current = if ps.pm_type == 5 { 0.0 } else { target as f32 };
@@ -335,7 +340,7 @@ pub fn update_view_height(ps: &mut PlayerState, pml: &Pml, cmd: &UserCmd) {
     let mut progress = 0i32;
     if ps.view_height_lerp_time != 0 {
         let lerp_target = ps.view_height_lerp_target;
-        let duration = lerp_duration(ps, lerp_target, ps.view_height_lerp_down);
+        let duration = lerp_duration(ps, lerp_target, ps.view_height_lerp_down, prone_lerp_ms);
         progress = cmd
             .server_time
             .wrapping_sub(ps.view_height_lerp_time)
@@ -357,7 +362,7 @@ pub fn update_view_height(ps: &mut PlayerState, pml: &Pml, cmd: &UserCmd) {
     if ps.view_height_lerp_time == 0 {
         start_view_height_lerp(ps, cmd);
     } else {
-        reverse_view_height_lerp(ps, cmd, progress);
+        reverse_view_height_lerp(ps, cmd, progress, prone_lerp_ms);
     }
 }
 
@@ -399,7 +404,7 @@ fn start_view_height_lerp(ps: &mut PlayerState, cmd: &UserCmd) {
     }
 }
 
-fn reverse_view_height_lerp(ps: &mut PlayerState, cmd: &UserCmd, progress: i32) {
+fn reverse_view_height_lerp(ps: &mut PlayerState, cmd: &UserCmd, progress: i32, prone_ms: i32) {
     let target = ps.view_height_target;
     let lerp_target = ps.view_height_lerp_target;
     if target == lerp_target {
@@ -441,7 +446,7 @@ fn reverse_view_height_lerp(ps: &mut PlayerState, cmd: &UserCmd, progress: i32) 
         return;
     }
 
-    let duration = lerp_duration(ps, ps.view_height_lerp_target, down);
+    let duration = lerp_duration(ps, ps.view_height_lerp_target, down, prone_ms);
     let elapsed = ((duration as f32) * (progress as f32) * REVERSE_REWIND_SCALE) as i32;
     ps.view_height_lerp_time = cmd.server_time.wrapping_sub(elapsed);
 }
@@ -496,13 +501,18 @@ pub enum StanceChange {
 }
 
 #[must_use]
-pub fn stance_speed_scale(ps: &PlayerState, server_time: i32, last_stand_scale: f32) -> f32 {
+pub fn stance_speed_scale(
+    ps: &PlayerState,
+    server_time: i32,
+    last_stand_scale: f32,
+    prone_lerp_ms: i32,
+) -> f32 {
     const PRONE_SCALE: f32 = 0.15;
 
     const CROUCH_SCALE: f32 = 0.65;
 
     if ps.view_height_lerp_time != 0 && ps.view_height_lerp_target == view_height::PRONE {
-        let transition_ms = lerp_duration(ps, view_height::PRONE, 1) as f32;
+        let transition_ms = lerp_duration(ps, view_height::PRONE, 1, prone_lerp_ms) as f32;
         let fraction = (server_time.wrapping_sub(ps.view_height_lerp_time) as f32) / transition_ms;
         if fraction >= 0.0 {
             let fraction = if fraction > 1.0 { 1.0 } else { fraction };
@@ -516,7 +526,7 @@ pub fn stance_speed_scale(ps: &PlayerState, server_time: i32, last_stand_scale: 
         && ps.view_height_lerp_target == view_height::CROUCH
         && ps.view_height_lerp_down == 0
     {
-        let transition_ms = lerp_duration(ps, view_height::CROUCH, 0) as f32;
+        let transition_ms = lerp_duration(ps, view_height::CROUCH, 0, prone_lerp_ms) as f32;
         let fraction = (server_time.wrapping_sub(ps.view_height_lerp_time) as f32) / transition_ms;
         if fraction >= 0.0 {
             let fraction = if fraction > 1.0 { 1.0 } else { fraction };

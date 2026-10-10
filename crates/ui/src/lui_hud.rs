@@ -1157,10 +1157,15 @@ fn lui_hud(
             v.binds = k.binding_keys_all.iter().map(|(c, keys)| (c.clone(), keys.clone())).collect();
         }
     }
-    let Ok(win) = window.single() else {
-        return;
+    // IW4L_HEADLESS=1: no window. The scripts still run, on BO2's own
+    // 1280x720 screen with no pointer, so their errors and engine calls
+    // still reach the log; nothing is drawn.
+    let headless = frame::Headless::requested();
+    let (ww, wh, pointer) = match window.single() {
+        Ok(win) => (win.width(), win.height(), win.cursor_position()),
+        Err(_) if headless => (1280.0, 720.0, None),
+        Err(_) => return,
     };
-    let (ww, wh) = (win.width(), win.height());
     let aspect = ww / wh.max(1.0);
     let scale = wh / 720.0;
     if (hud.aspect - aspect).abs() > 1e-3 {
@@ -1420,7 +1425,7 @@ fn lui_hud(
         hud.host.root_event("key_bound", &[]);
     }
     if !capturing {
-        menu_input(hud, &mut io, console_open, win.cursor_position(), scale);
+        menu_input(hud, &mut io, console_open, pointer, scale);
     }
     // (Presses the menus did not take are not theirs a frame later.)
     io.key_events.clear();
@@ -1472,6 +1477,9 @@ fn lui_hud(
                 }
             }
         }
+    }
+    if headless {
+        return;
     }
     // BO2ZM_LUI_DUMP=1: every element the scripts have, each time their
     // number changes (debugging aid).
