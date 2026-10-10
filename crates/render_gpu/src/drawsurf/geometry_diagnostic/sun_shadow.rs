@@ -2,10 +2,12 @@
 //! bodies, thrown things, script models) cast shadows from the sun onto the
 //! world and onto each other. As the game: two sun partitions, the near one
 //! `1024 * sm_sunSampleSizeNear` units across and the far one four times
-//! that, fitted around the camera in the sun's view and snapped to whole
-//! texels so they do not crawl; the lit shaders read them with a compare
-//! sampler (`sun_shadow_at` in the world shader). The world itself keeps its
-//! baked sun shadows.
+//! that. In the sun's view the camera sits inside both where its near plane
+//! leans (an eye looking along the sun's view sits at the centre; one
+//! looking across it sits at the edge behind it, so the map reaches ahead),
+//! and both snap to whole far texels so they do not crawl; the lit shaders
+//! read them with a compare sampler (`sun_shadow_at` in the world shader).
+//! The world itself keeps its baked sun shadows.
 
 use super::*;
 use bevy::render::render_resource::{
@@ -169,22 +171,49 @@ fn caster_pipeline(shadow: &SunShadow) -> RenderPipelineDescriptor {
     }
 }
 
-/// A partition's clip-from-world: the sun's view, `extent` units across,
-/// centred on `centre` snapped to whole texels.
-fn partition(sun_view: Mat4, centre: Vec3, extent: f32) -> Mat4 {
-    let texel = extent / SIZE as f32;
-    let c = sun_view.transform_point3(centre);
-    let (x, y) = ((c.x / texel).floor() * texel, (c.y / texel).floor() * texel);
-    let half = extent * 0.5;
-    let depth = -c.z;
-    Mat4::orthographic_rh(
-        x - half,
-        x + half,
-        y - half,
-        y + half,
-        depth - DEPTH_HALF,
-        depth + DEPTH_HALF,
-    ) * sun_view
+/// Both partitions' clip-from-world, as Black Ops II places them: the
+/// camera's texel is where it sits in the sun-view box around it and its
+/// near plane's corners (the same in both partitions), and the corner of
+/// each snaps to whole far texels.
+fn partitions(sun_view: Mat4, world_from_view: Mat4, tan: Vec2, near_texel: f32) -> [Mat4; 2] {
+    let n = SIZE as f32;
+    let o = sun_view.transform_point3(world_from_view.w_axis.truncate());
+    let (mut lo, mut hi) = (o.truncate(), o.truncate());
+    for (sx, sy) in [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)] {
+        let corner = world_from_view.transform_point3(Vec3::new(sx * tan.x, sy * tan.y, -1.0));
+        let c = sun_view.transform_point3(corner).truncate();
+        lo = lo.min(c);
+        hi = hi.max(c);
+    }
+    let side = hi - lo;
+    let k = (n - 1.0) / side.x.max(side.y).max(1e-6);
+    let mid = (lo + hi) * 0.5;
+    // The camera's texel from the left and from the top.
+    let cx = if o.x < mid.x {
+        (o.x - lo.x) * k + 1.0
+    } else {
+        n - 1.0 - (hi.x - o.x) * k
+    };
+    let cy = if o.y > mid.y {
+        (hi.y - o.y) * k + 1.0
+    } else {
+        n - 1.0 - (o.y - lo.y) * k
+    };
+    let far_texel = near_texel * 4.0;
+    let snap = (o.truncate() / far_texel).floor() * far_texel;
+    let depth = -o.z;
+    [near_texel, far_texel].map(|t| {
+        let left = snap.x - ((snap.x - o.x) / t + cx).floor() * t;
+        let top = snap.y + (cy - (snap.y - o.y) / t).floor() * t;
+        Mat4::orthographic_rh(
+            left,
+            left + n * t,
+            top - n * t,
+            top,
+            depth - DEPTH_HALF,
+            depth + DEPTH_HALF,
+        ) * sun_view
+    })
 }
 
 /// A draw that casts a sun shadow: an opaque, untested surface, or a
@@ -250,10 +279,16 @@ pub(super) fn draw_sun_shadow(
         queue.write_buffer(&shadow.params, 0, bytemuck::cast_slice(&params));
         return;
     };
-    let world_from_view = view.into_inner().0.world_from_view.to_matrix();
-    let eye = world_from_view.w_axis.truncate();
-    let forward = -world_from_view.z_axis.truncate();
-    let up = if sun.z.abs() > 0.99 { Vec3::X } else { Vec3::Z };
+    let extracted = view.into_inner().0;
+    let world_from_view = extracted.world_from_view.to_matrix();
+    let clip_from_view = extracted.clip_from_view;
+    let tan = Vec2::new(1.0 / clip_from_view.x_axis.x, 1.0 / clip_from_view.y_axis.y);
+    // R_GetSunAxes: up is the world's up unless the sun is near overhead.
+    let up = if sun.truncate().length_squared() < 0.1 {
+        Vec3::X
+    } else {
+        Vec3::Z
+    };
     let sun_view = Mat4::look_to_rh(Vec3::ZERO, -sun, up);
     let sample_size = match geometry.t6_sun_sample_size_near {
         size if size > 0.0 => size,
@@ -261,7 +296,7 @@ pub(super) fn draw_sun_shadow(
     };
     let near_extent = 1024.0 * sample_size;
     let extents = [near_extent, near_extent * 4.0];
-    let mats = extents.map(|extent| partition(sun_view, eye + forward * (extent * 0.25), extent));
+    let mats = partitions(sun_view, world_from_view, tan, extents[0] / SIZE as f32);
     params[..16].copy_from_slice(&mats[0].to_cols_array());
     params[16..32].copy_from_slice(&mats[1].to_cols_array());
     params[32] = 1.0;

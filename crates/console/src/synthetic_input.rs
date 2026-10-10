@@ -22,6 +22,8 @@ fn plus_command_id(name: &str) -> Option<u32> {
     let id = command_id_lookup(name)?;
     if id < input_iw4::HOLD_PAIR_LIMIT && id % 2 == 0 {
         Some(id - 1)
+    } else if id == input_iw4::WEAPNEXT_INVENTORY_DOWN + 1 {
+        Some(input_iw4::WEAPNEXT_INVENTORY_DOWN)
     } else {
         Some(id)
     }

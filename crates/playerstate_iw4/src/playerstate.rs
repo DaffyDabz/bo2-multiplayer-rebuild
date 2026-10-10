@@ -106,6 +106,8 @@ pub struct PlayerState {
     pub perk_slots: [u32; 8],
     pub action_slot_type: [i32; 4],
     pub action_slot_param: [i32; 4],
+    /// Black Ops II's `ps.inventoryWeapon` (`setinventoryweapon`); 0 = none.
+    pub inventory_weapon: i32,
     pub shellshock_index: i32,
     pub shellshock_time: i32,
     pub shellshock_duration: i32,
@@ -343,6 +345,7 @@ impl PlayerState {
         perk_slots: [0; 8],
         action_slot_type: [0; 4],
         action_slot_param: [0; 4],
+        inventory_weapon: 0,
         shellshock_index: 0,
         shellshock_time: 0,
         shellshock_duration: 0,

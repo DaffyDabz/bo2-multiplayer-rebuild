@@ -1076,6 +1076,16 @@ pub(crate) fn location_pick(world: &mut World, client: u32, picked: [u8; 3], con
     }
 }
 
+/// bo2mp: the console's `give killstreak`, to BO2's own scripts. False when
+/// no BO2 match runs.
+pub(crate) fn give_killstreak(world: &mut World, client: u32, menu_name: &str) -> bool {
+    if !world.get_resource::<Zm>().is_some_and(|z| z.mp) {
+        return false;
+    }
+    killstreaks::give(world, client, menu_name);
+    true
+}
+
 /// A client dvar for one player's client (its HUD, its music).
 pub(crate) fn set_client_dvar(world: &mut World, client: u32, key: &str, value: &str) {
     let mut f = frame(world);

@@ -532,9 +532,10 @@ fn publish_client_action_input(
             _ => crate::binds::display_button(button).to_uppercase(),
         };
         if let Some(command) = binds.binding_name(button) {
-            // BO2's HUD asks for the next-weapon key by its own name
-            // (`[{+weapnext_inventory}]`, the VTOL's FLIR prompt).
-            let names: &[&str] = if command == "weapnext" {
+            // BO2's HUD asks for the switch-weapon key by its own name
+            // (`[{+weapnext_inventory}]`, the VTOL's FLIR prompt); a key
+            // bound to plain `weapnext` answers it too.
+            let names: &[&str] = if matches!(command, "weapnext" | "+weapnext_inventory") {
                 &["weapnext", "+weapnext_inventory"]
             } else {
                 &[command]

@@ -931,7 +931,9 @@ fn apply_actions(world: &mut FrameWorld, tick: Tick, actions: &[(ClientId, Clien
                     continue;
                 }
                 let name = crate::menu_response_text(&name);
-                crate::script::give_killstreak(world.ecs(), id.0, name);
+                if !crate::t6::give_killstreak(world.ecs(), id.0, name) {
+                    crate::script::give_killstreak(world.ecs(), id.0, name);
+                }
             }
             ClientAction::ForceDeath { request_id: _ } => {
                 if !world.bootstrap_ref().allow_debug_actions {

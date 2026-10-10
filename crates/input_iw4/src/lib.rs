@@ -14,8 +14,9 @@ pub use adjust_angles::{
     adjust_angles,
 };
 pub use names::{
-    HOLD_PAIR_LIMIT, INPUT_COMMAND_NAMES, SCRIPT_KEYNUM, command_id_from_name, command_id_lookup,
-    command_name, command_names, key_up_command_id,
+    HOLD_PAIR_LIMIT, INPUT_COMMAND_NAMES, INVENTORY_COMMAND, SCRIPT_KEYNUM,
+    WEAPNEXT_INVENTORY_DOWN, command_id_from_name, command_id_lookup, command_name,
+    command_names, key_up_command_id,
 };
 
 use playerstate_iw4::{UserCmd, buttons};
@@ -261,6 +262,16 @@ pub struct ClientInput {
     /// bo2zm: the local player is sprinting at standing height (set each
     /// frame from the predicted player): the stance button dives when held.
     pub sprinting: bool,
+
+    /// bo2mp: when `+weapnext_inventory` went down, while it still waits to
+    /// be a tap (Black Ops II's weapNextHeld / weapNextTime).
+    pub weapnext_held: Option<i32>,
+    /// bo2mp: switch to the inventory weapon (held switch-weapon, or the
+    /// `inventory` command); the client takes it.
+    pub inventory_request: bool,
+    /// bo2mp: the switch-weapon key went down this frame (the vehicle seat
+    /// button).
+    pub change_seat_press: bool,
 }
 
 impl Default for ClientInput {
@@ -276,6 +287,9 @@ impl Default for ClientInput {
             stance_held: None,
             center_view: false,
             sprinting: false,
+            weapnext_held: None,
+            inventory_request: false,
+            change_seat_press: false,
         }
     }
 }
@@ -354,7 +368,10 @@ pub fn input_cmd(client: &mut ClientInput, cmd_id: u32, key: i32, now_msec: i32,
         61 | 62 => apply_pair(&mut client.kb.scores, cmd_id, key, now_msec, frame_msec),
         63 | 64 => apply_pair(&mut client.kb.talk, cmd_id, key, now_msec, frame_msec),
         65 | 67 | 68 | 69 => {}
-        66 | 70 => client.weapon_cycles.push(cmd_id == 66),
+        66 | 70 => {
+            client.weapon_cycles.push(cmd_id == 66);
+            client.change_seat_press |= cmd_id == 66;
+        }
         71 => client.center_view = true,
         72 | 73 => {
             let stance = if cmd_id == 72 {
@@ -372,7 +389,36 @@ pub fn input_cmd(client: &mut ClientInput, cmd_id: u32, key: i32, now_msec: i32,
         75 => client.stance_latch = buttons::CROUCH as i32,
         76 => client.using_ads = !client.using_ads,
         77 => set_ads(client, false),
+        // Black Ops II's IN_WeapNextInventoryDown / Up: a tap is the next
+        // weapon, on release; held, `weapnext_hold` takes the inventory weapon
+        // instead.
+        WEAPNEXT_INVENTORY_DOWN => {
+            if client.weapnext_held.is_none() {
+                client.weapnext_held = Some(now_msec);
+                client.change_seat_press = true;
+            }
+        }
+        79 => {
+            if client.weapnext_held.take().is_some() {
+                client.weapon_cycles.push(true);
+            }
+        }
+        INVENTORY_COMMAND => client.inventory_request = true,
         _ => {}
+    }
+}
+
+/// Black Ops II's cl_weapNextHoldTime: held this long, the switch-weapon key
+/// takes the inventory weapon and its release does nothing.
+const WEAPNEXT_HOLD_MS: i32 = 250;
+
+fn weapnext_hold(client: &mut ClientInput, now_msec: i32) {
+    if client
+        .weapnext_held
+        .is_some_and(|since| now_msec.wrapping_sub(since) >= WEAPNEXT_HOLD_MS)
+    {
+        client.weapnext_held = None;
+        client.inventory_request = true;
     }
 }
 
@@ -608,6 +654,7 @@ pub fn create_cmd(input: &CreateCmdInput) -> UserCmd {
 
 pub fn sample_move(client: &mut ClientInput, now_msec: i32, frame_msec: u32) -> (u32, MoveAxes) {
     stance_hold(client, now_msec);
+    weapnext_hold(client, now_msec);
     let mut bits = key_move_bits(&client.kb, client.using_ads, cmd_buttons(&client.kb));
     if client.kb.gostand.active || client.kb.gostand.was_pressed {
         client.stance_latch = 0;
@@ -689,5 +736,79 @@ mod bo2_stance_tests {
         assert_eq!(client.stance_latch, CROUCH);
         stance_hold(&mut client, 1300);
         assert_eq!(client.stance_latch, PRONE);
+    }
+}
+
+#[cfg(test)]
+mod bo2_weapnext_tests {
+    use super::*;
+
+    fn press(client: &mut ClientInput, now: i32) {
+        input_cmd(client, WEAPNEXT_INVENTORY_DOWN, 5, now, 16);
+    }
+
+    fn release(client: &mut ClientInput, now: i32) {
+        let up = key_up_command_id(WEAPNEXT_INVENTORY_DOWN).unwrap();
+        input_cmd(client, up, 5, now, 16);
+    }
+
+    #[test]
+    fn the_bind_names_are_black_ops_ii_s() {
+        assert_eq!(
+            command_id_lookup("+weapnext_inventory"),
+            Some(WEAPNEXT_INVENTORY_DOWN)
+        );
+        assert_eq!(command_id_lookup("inventory"), Some(INVENTORY_COMMAND));
+        assert_eq!(command_name(79), Some("-weapnext_inventory"));
+    }
+
+    #[test]
+    fn a_tap_is_the_next_weapon_on_release() {
+        let mut client = ClientInput::default();
+        press(&mut client, 1000);
+        assert!(client.weapon_cycles.is_empty(), "nothing on the press");
+        assert!(client.change_seat_press, "the seat button is the press");
+        weapnext_hold(&mut client, 1240);
+        release(&mut client, 1240);
+        assert_eq!(client.weapon_cycles, [true]);
+        assert!(!client.inventory_request);
+    }
+
+    #[test]
+    fn the_wheel_press_and_release_in_one_frame_is_a_tap() {
+        let mut client = ClientInput::default();
+        press(&mut client, 1000);
+        release(&mut client, 1000);
+        weapnext_hold(&mut client, 2000);
+        assert_eq!(client.weapon_cycles, [true]);
+        assert!(!client.inventory_request);
+    }
+
+    #[test]
+    fn held_250_ms_it_takes_the_inventory_weapon_and_the_release_does_nothing() {
+        let mut client = ClientInput::default();
+        press(&mut client, 1000);
+        weapnext_hold(&mut client, 1249);
+        assert!(!client.inventory_request);
+        weapnext_hold(&mut client, 1250);
+        assert!(client.inventory_request);
+        release(&mut client, 1400);
+        assert!(client.weapon_cycles.is_empty());
+    }
+
+    #[test]
+    fn a_repeated_press_keeps_the_first_press_time() {
+        let mut client = ClientInput::default();
+        press(&mut client, 1000);
+        press(&mut client, 1200);
+        weapnext_hold(&mut client, 1250);
+        assert!(client.inventory_request);
+    }
+
+    #[test]
+    fn the_inventory_command_asks_at_once() {
+        let mut client = ClientInput::default();
+        input_cmd(&mut client, INVENTORY_COMMAND, 5, 1000, 16);
+        assert!(client.inventory_request);
     }
 }

@@ -186,7 +186,7 @@ pub fn pad_layout(layout: usize) -> Vec<(PadButton, &'static str)> {
         (South, "+gostand"),
         (East, "+stance"),
         (West, "+usereload"),
-        (North, "weapnext"),
+        (North, "+weapnext_inventory"),
         (LeftStick, "+breath_sprint"),
         (RightStick, "+melee"),
         (DpadUp, "+actionslot 1"),

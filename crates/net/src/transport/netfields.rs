@@ -353,6 +353,7 @@ ps_netfields! {
     perk_slots: u32x8 = Replication::Replicated, Validation::Exact;
     action_slot_type: i32array = Replication::Replicated, Validation::Exact;
     action_slot_param: i32array = Replication::Replicated, Validation::Exact;
+    inventory_weapon: i32 = Replication::Replicated, Validation::Exact;
     shellshock_index: i32 = Replication::Replicated, Validation::Exact;
     shellshock_time: i32 = Replication::Replicated, Validation::Exact;
     shellshock_duration: i32 = Replication::Replicated, Validation::Exact;

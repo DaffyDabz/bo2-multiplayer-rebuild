@@ -191,17 +191,33 @@ pub(super) fn bind(vm: &mut Vm<World>) {
         Ok(Value::Undefined)
     });
     // The inventory slot: a streak from a care package ("" empties it;
-    // "none" when empty, as the scripts compare it with weapon names).
+    // "none" when empty, as the scripts compare it with weapon names). The
+    // engine's own field carries it to the client, which switches to it when
+    // the switch-weapon key is held.
     m!("setinventoryweapon", |vm, world, s, a| {
         let Some(n) = entnum(vm, s) else {
             return Ok(Value::Undefined);
         };
         let w = text(vm, a, 0);
-        let mut st = streaks(world);
-        if w.is_empty() || w == "none" {
-            st.inventory.remove(&n);
+        let empty = w.is_empty() || w == "none";
+        let index = if empty {
+            0
         } else {
-            st.inventory.insert(n, w);
+            super::weapon(world, &w).unwrap_or(0) as i32
+        };
+        diag::info!(Sim, "bo2mp streaks: player {n} inventory weapon `{w}` ({index})");
+        {
+            let mut st = streaks(world);
+            if empty {
+                st.inventory.remove(&n);
+            } else {
+                st.inventory.insert(n, w);
+            }
+        }
+        if let Ok(id) = super::client(vm, world, s)
+            && let Some(ps) = frame(world).player_mut(id)
+        {
+            ps.inventory_weapon = index;
         }
         Ok(Value::Undefined)
     });
@@ -252,10 +268,15 @@ pub(super) fn bind(vm: &mut Vm<World>) {
         }
         Ok(Value::Undefined)
     });
-    // His inventory and fourth-slot buttons: BO2 tells a streak used from
-    // the inventory slot from one on the d-pad by them. Our keys raise
-    // d-pad weapons only.
-    m!("inventorybuttonpressed", |_, _, _, _| Ok(Value::Int(0)));
+    // His inventory button: BO2 tells a streak used from the inventory slot
+    // from one on the d-pad by it. His client sets it on each command while
+    // it switches to the inventory weapon (switch-weapon held).
+    m!("inventorybuttonpressed", |vm, world, s, _| {
+        let id = super::client(vm, world, s)?;
+        let held = crate::script_player::buttons(&mut frame(world), id);
+        Ok(Value::bool(held & playerstate_iw4::buttons::INVENTORY != 0))
+    });
+    // His fourth-slot button: our keys raise d-pad weapons only.
     m!("actionslotfourbuttonpressed", |_, _, _, _| Ok(Value::Int(
         0
     )));
@@ -908,6 +929,30 @@ pub(super) fn location_pick(world: &mut World, client: u32, picked: [u8; 3], con
             "confirm_location",
             &[Value::Vec3(location), Value::Float(yaw)],
         )
+    });
+}
+
+/// The console's `give killstreak <menu name>`: BO2's own givekillstreak
+/// with the streak's type (`level.menureferenceforkillstreak`), so it lands
+/// in the inventory slot as a care package's streak does.
+pub(super) fn give(world: &mut World, client: u32, menu_name: &str) {
+    let Some(obj) = world.resource::<Zm>().players.get(&client).map(|p| p.obj) else {
+        return;
+    };
+    super::with_vm(world, |vm, world| {
+        let (types, menu) = (vm.intern("menureferenceforkillstreak"), vm.intern(menu_name));
+        let kind = match vm.raw_field(vm.level, types) {
+            Value::Array(a) => a.get(&gsc_t6::Key::Str(menu)),
+            _ => None,
+        };
+        let Some(kind) = kind else {
+            diag::warn!(Sim, "bo2mp streaks: give {menu_name}: no such scorestreak");
+            return;
+        };
+        let started = vm
+            .spawn_named(world, "maps/mp/killstreaks/_killstreaks", "givekillstreak", Value::Object(obj), vec![kind])
+            .is_some();
+        diag::info!(Sim, "bo2mp streaks: give player {client} {menu_name} (started {started})");
     });
 }
 

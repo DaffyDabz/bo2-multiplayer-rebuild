@@ -1,4 +1,4 @@
-pub const INPUT_COMMAND_NAMES: [&str; 78] = [
+pub const INPUT_COMMAND_NAMES: [&str; 81] = [
     "",
     "+attack",
     "-attack",
@@ -77,9 +77,20 @@ pub const INPUT_COMMAND_NAMES: [&str; 78] = [
     "gocrouch",
     "toggleads",
     "leaveads",
+    // Black Ops II's switch-weapon key (players/bindings_mp.bdg: MWHEELUP and
+    // BUTTON_Y "+weapnext_inventory"): a tap is the next weapon on release, a
+    // hold is the inventory weapon. `inventory` picks the inventory weapon.
+    "+weapnext_inventory",
+    "-weapnext_inventory",
+    "inventory",
 ];
 
 pub const HOLD_PAIR_LIMIT: u32 = 0x41;
+
+/// `+weapnext_inventory`; its up half follows it.
+pub const WEAPNEXT_INVENTORY_DOWN: u32 = 78;
+/// `inventory`: select the inventory weapon.
+pub const INVENTORY_COMMAND: u32 = 80;
 
 pub const SCRIPT_KEYNUM: i32 = 0x400;
 
@@ -105,11 +116,6 @@ pub fn command_id_lookup(name: &str) -> Option<u32> {
     if let Some(id) = command_id_from_name(folded) {
         return Some(id);
     }
-    // Black Ops II's own name for its wheel-up bind (players/
-    // bindings_mp.bdg: MWHEELUP "+weapnext_inventory"): the next weapon.
-    if folded == "+weapnext_inventory" {
-        return command_id_from_name("weapnext");
-    }
     if folded.starts_with('+') || folded.starts_with('-') {
         return None;
     }
@@ -134,6 +140,8 @@ pub fn key_up_command_id(binding: u32) -> Option<u32> {
         None
     } else if binding < HOLD_PAIR_LIMIT && binding % 2 == 1 {
         Some(binding + 1)
+    } else if binding == WEAPNEXT_INVENTORY_DOWN {
+        Some(WEAPNEXT_INVENTORY_DOWN + 1)
     } else {
         None
     }

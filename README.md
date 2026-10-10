@@ -170,6 +170,11 @@ only. Like upstream IW4L, much of this code was written by an LLM (Claude), dire
 
 ## Recent changes
 
+- 2026-10-10: a scorestreak from a care package waits in the inventory slot and comes out the original way: hold
+  the switch-weapon key (controller Y) for a quarter second; a tap still swaps guns, now on release as in the
+  original. The console's `give killstreak` hands it over through Black Ops II's own scripts. Sun shadows sit
+  around the player the way the original places them, reach further ahead of where you look and no longer crawl
+  as you turn.
 - 2026-10-10: Nuketown's mannequins break the way the original breaks them, the match sets up spawns the way
   Black Ops II does, names show over teammates' heads, being shot no longer hangs a blood cloud at your own
   camera (only the red screen edges), and the sun casts live shadows sized for each map.
@@ -212,8 +217,7 @@ only. Like upstream IW4L, much of this code was written by an LLM (Claude), dire
 
 - The Hellstorm's steer prompt key.
 - Movement and gun-feel numbers checked side by side against the original game.
-- Sun shadows fitted exactly as the original fits them, and cast by moving things too.
-- Care-package scorestreaks used the original way (hold the switch-weapon key).
+- The care package's drop and pick-up checked side by side against the original game.
 - More per-map test runs to fill in the mechanics bars; visual comparison shots for each map.
 - Playing together over LAN, and one build with Black Ops II's main menu for both Multiplayer and Zombies.
 

@@ -257,6 +257,9 @@ pub struct WeaponSelect {
 
     pub last_primary: u32,
     pub mapped_index: u32,
+    /// bo2mp: Black Ops II's switchingToInventory: the inventory weapon was
+    /// asked for and the player does not hold it yet.
+    pub switching_to_inventory: bool,
 }
 
 pub fn follow_held_weapon_select(
@@ -1032,8 +1035,9 @@ pub fn sample_client_input(
         }
     }
     let cycles = std::mem::take(&mut actions.client.weapon_cycles);
-    // bo2mp: wheel up (`+weapnext_inventory`) is also BO2's change seat button.
-    let change_seat = cycles.iter().any(|next| *next);
+    // bo2mp: the switch-weapon key (`+weapnext_inventory`, wheel up) is also
+    // BO2's change seat button, on the press.
+    let change_seat = std::mem::take(&mut actions.client.change_seat_press);
     let in_killcam = view.is_some_and(|v| v.in_killcam());
     if let Some(ps) = ps {
         for next in cycles {
@@ -1094,6 +1098,55 @@ pub fn sample_client_input(
 
     if change_seat {
         cmd.buttons |= playerstate_iw4::buttons::CHANGE_SEAT;
+    }
+    // bo2mp: Black Ops II's CG_SelectInventoryWeapon (switch-weapon held, or
+    // `inventory`) takes the inventory weapon (the streak from a care
+    // package); each command then carries the inventory button until the
+    // server's snapshot has him holding it (CL_WeapNextButtonUpdate reads the
+    // snapshot, not the prediction), so the streak script, which reads the
+    // button when the weapon changes on the server, knows it came from the
+    // inventory.
+    let inventory_request = std::mem::take(&mut actions.client.inventory_request);
+    if let Some(ps) = ps {
+        let target = ps.inventory_weapon.max(0) as u32;
+        if inventory_request {
+            diag::info!(
+                Net,
+                "bo2mp inventory: switch asked; inventory weapon {target}, holding {}, selected {}, carried {}, frozen {frozen}, can switch {}",
+                ps.weapon,
+                select.index,
+                ps.weapons.contains(&(target as i32)),
+                input_iw4::weapon_select::weapon_cycle_allowed(ps, clock.time(), select.time, 0, 0)
+            );
+        }
+        if inventory_request
+            && !frozen
+            && target != 0
+            && target != ps.weapon
+            && target != select.index
+            && ps.weapons.contains(&(target as i32))
+            && input_iw4::weapon_select::weapon_cycle_allowed(ps, clock.time(), select.time, 0, 0)
+        {
+            select.index = target;
+            select.mapped_index = target;
+            select.time = clock.time();
+            select.switching_to_inventory = true;
+            input_iw4::set_ads(&mut actions.client, false);
+        }
+        // `presented.player` is the prediction for him; the snapshot's own.
+        let snap = presented
+            .snapshot()
+            .and_then(|snapshot| snapshot.players.iter().find(|(c, _)| *c == local.0))
+            .map_or(ps, |(_, snap)| snap);
+        if select.switching_to_inventory
+            && target != 0
+            && select.index == snap.inventory_weapon.max(0) as u32
+            && snap.weapon != select.index
+        {
+            cmd.buttons |= playerstate_iw4::buttons::INVENTORY;
+        } else {
+            select.switching_to_inventory = false;
+        }
     }
     cmd.weapon = select.index as u16;
     cmd.weapon_mapped = select.mapped_index as u16;

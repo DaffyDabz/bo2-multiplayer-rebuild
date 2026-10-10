@@ -57,5 +57,11 @@ pub mod buttons {
     /// gunner's FLIR toggle polls it through `changeseatbuttonpressed`.
     pub const CHANGE_SEAT: u32 = 0x400000;
 
+    /// Black Ops II's inventory button (its own bit is usercmd word 1, 0x400):
+    /// set on each command while the client is switching to the inventory
+    /// weapon (the care package / streak held on switch-weapon). Script reads
+    /// it through `inventorybuttonpressed`.
+    pub const INVENTORY: u32 = 0x800000;
+
     pub const SPRINT_INTERFERING: u32 = 0xcc35;
 }
