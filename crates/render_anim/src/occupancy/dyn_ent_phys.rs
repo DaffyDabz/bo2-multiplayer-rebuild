@@ -15,7 +15,7 @@ const MSEC_STEP: i32 = 17;
 
 const MAX_ITERS: i32 = 2;
 
-const CONTENTS_SOLID: u32 = 1;
+use super::ragdoll::MASK_PHYS_WORLD;
 const SLEEP_SPEED: f32 = 4.0;
 const GROUND_NZ: f32 = 0.7;
 const CONTACT_SLOP: f32 = 0.125;
@@ -199,7 +199,7 @@ fn integrate_body(body: &mut DynEntPhysBody, clip: &ClipCollision, dt: f32) {
         end.to_array(),
         body.mins,
         body.maxs,
-        CONTENTS_SOLID,
+        MASK_PHYS_WORLD,
     );
     if hit.allsolid || hit.startsolid {
         body.vel = Vec3::ZERO;

@@ -34,6 +34,9 @@ impl XAnimKey {
 pub struct CapturedXAnim {
     pub namespace: AssetNamespace,
     pub parts: Arc<RawXAnimParts>,
+    /// Black Ops II's root motion, kept aside: its clips decode without it
+    /// unless asked through [`XAnimCatalog::clip_with_root_motion`].
+    pub root_motion: Option<Arc<RawDeltaTrans>>,
 }
 
 impl CapturedXAnim {
@@ -195,6 +198,20 @@ impl XAnimCatalog {
         let mut clip = (*self.clip(AssetNamespace::Iw4, name)?).clone();
         clip.tracks.retain(|track| body_bones.contains(&track.name));
         Some(Arc::new(clip))
+    }
+
+    /// The clip with its root motion, also where the catalog's own decode goes
+    /// without it (Black Ops II's clips: a climb moves the player along it).
+    pub fn clip_with_root_motion(&self, ns: AssetNamespace, name: &str) -> Option<AnimClip> {
+        let captured = self.get(ns, name)?;
+        match captured.root_motion.as_deref() {
+            Some(root) if captured.parts.delta_trans.is_none() => {
+                let mut parts = (*captured.parts).clone();
+                parts.delta_trans = Some(root.clone());
+                AnimClip::from_parts(&parts).ok()
+            }
+            _ => self.clip(ns, name).map(|clip| (*clip).clone()),
+        }
     }
 
     pub fn decode(&self, ns: AssetNamespace, name: &str) -> Option<AnimClip> {
@@ -388,6 +405,7 @@ impl XAnimBuild {
             AssetNamespace::Iw5,
             CapturedXAnim {
                 namespace: AssetNamespace::Iw5,
+                root_motion: None,
                 parts: Arc::new(RawXAnimParts {
                     name: name.to_owned(),
                     data_byte,
@@ -481,6 +499,7 @@ impl XAnimBuild {
             AssetNamespace::T5,
             CapturedXAnim {
                 namespace: AssetNamespace::T5,
+                root_motion: None,
                 parts: Arc::new(RawXAnimParts {
                     name: name.to_owned(),
                     data_byte,
@@ -521,6 +540,11 @@ impl XAnimBuild {
             AssetNamespace::T6,
             CapturedXAnim {
                 namespace: AssetNamespace::T6,
+                root_motion: if anim.delta {
+                    t6_root_motion(&anim.delta_trans).map(Arc::new)
+                } else {
+                    None
+                },
                 parts: Arc::new(RawXAnimParts {
                     // T6 names are case-insensitive: keyed lower case.
                     name: name.to_ascii_lowercase(),
@@ -632,6 +656,7 @@ impl AssetLinkSink for XAnimBuild {
 
         self.insert_captured(CapturedXAnim {
             namespace: AssetNamespace::Iw4,
+            root_motion: None,
             parts: Arc::new(RawXAnimParts {
                 name: name.to_owned(),
                 data_byte,
@@ -653,6 +678,50 @@ impl AssetLinkSink for XAnimBuild {
         let _ = geometry.frequency;
         Ok(())
     }
+}
+
+/// Black Ops II root keys (frame, position) packed the way the clip decoder
+/// reads them: full 16-bit steps over the keys' own range.
+fn t6_root_motion(keys: &[(u16, [f32; 3])]) -> Option<RawDeltaTrans> {
+    let (&(_, first), rest) = keys.split_first()?;
+    if rest.is_empty() {
+        return Some(RawDeltaTrans {
+            size: 0,
+            small: false,
+            mins: first,
+            step: [0.0; 3],
+            indices: Vec::new(),
+            packed: Vec::new(),
+        });
+    }
+    let mut mins = first;
+    let mut maxs = first;
+    for (_, v) in rest {
+        for a in 0..3 {
+            mins[a] = mins[a].min(v[a]);
+            maxs[a] = maxs[a].max(v[a]);
+        }
+    }
+    let step: [f32; 3] = core::array::from_fn(|a| (maxs[a] - mins[a]) / f32::from(u16::MAX));
+    let mut packed = Vec::with_capacity(keys.len() * 6);
+    for (_, v) in keys {
+        for a in 0..3 {
+            let q = if step[a] > 0.0 {
+                ((v[a] - mins[a]) / step[a]).round() as u16
+            } else {
+                0
+            };
+            packed.extend_from_slice(&q.to_le_bytes());
+        }
+    }
+    Some(RawDeltaTrans {
+        size: u16::try_from(keys.len() - 1).ok()?,
+        small: false,
+        mins,
+        step,
+        indices: keys.iter().map(|&(frame, _)| frame).collect(),
+        packed,
+    })
 }
 
 fn ascii_lower(name: &str) -> String {
@@ -834,4 +903,75 @@ fn copy_u32_t5(
         .chunks_exact(4)
         .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bo2_root_motion_is_kept_aside_for_who_asks() {
+        let keys = [(0, [0.0, 0.0, 0.0]), (13, [8.0, 0.0, 30.0]), (26, [16.0, 0.0, 57.0])];
+        let mut build = XAnimBuild::default();
+        build.insert_in(
+            AssetNamespace::T6,
+            CapturedXAnim {
+                namespace: AssetNamespace::T6,
+                parts: Arc::new(RawXAnimParts {
+                    name: "mp_mantle_up_57".to_owned(),
+                    numframes: 26,
+                    framerate: 30.0,
+                    flags: 2,
+                    ..RawXAnimParts::default()
+                }),
+                root_motion: t6_root_motion(&keys).map(Arc::new),
+            },
+        );
+        let catalog = build.publish();
+        let plain = catalog.clip(AssetNamespace::T6, "mp_mantle_up_57").unwrap();
+        assert!(!plain.has_delta());
+        let clip = catalog
+            .clip_with_root_motion(AssetNamespace::T6, "mp_mantle_up_57")
+            .unwrap();
+        let close = |a: [f32; 3], b: [f32; 3]| (0..3).all(|i| (a[i] - b[i]).abs() < 0.01);
+        assert!(close(clip.abs_delta_trans(0.5), [8.0, 0.0, 30.0]));
+        assert!(close(clip.abs_delta_trans(1.0), [16.0, 0.0, 57.0]));
+    }
+
+    #[test]
+    #[ignore = "reads Black Ops II's common_zm.ff named by T6_COMMON_ZM"]
+    fn bo2_climbs_carry_their_root_motion() {
+        let path = std::env::var("T6_COMMON_ZM").expect("T6_COMMON_ZM");
+        let capture = asset_t6::capture_zone(std::path::Path::new(&path)).expect("zone");
+        let mut build = XAnimBuild::default();
+        for anim in &capture.xanims {
+            build.insert_t6(anim);
+        }
+        let catalog = build.publish();
+        for name in [
+            "mp_mantle_up_57",
+            "mp_mantle_up_51",
+            "mp_mantle_up_45",
+            "mp_mantle_up_39",
+            "mp_mantle_up_33",
+            "mp_mantle_up_27",
+            "mp_mantle_up_21",
+            "mp_mantle_over_high",
+            "mp_mantle_over_mid",
+            "player_mantle_over_low",
+        ] {
+            let clip = catalog
+                .clip_with_root_motion(AssetNamespace::T6, name)
+                .expect(name);
+            let end = clip.abs_delta_trans(1.0);
+            println!("{name}: {} ms, ends {end:?}", clip.length_msec());
+            assert!(clip.has_delta(), "{name} has no root motion");
+            if let Some(height) = name.strip_prefix("mp_mantle_up_") {
+                let height: f32 = height.parse().unwrap();
+                assert!((end[2] - height).abs() < 1.0, "{name} ends {end:?}");
+            } else {
+                assert!(end[0] > 20.0, "{name} ends {end:?}");
+            }
+        }
+    }
 }

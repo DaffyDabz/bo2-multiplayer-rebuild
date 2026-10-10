@@ -921,6 +921,54 @@ fn destructible_models(captures: &[&ZoneCapture]) -> HashMap<String, String> {
     defs
 }
 
+/// bo2mp: each destructible definition the server breaks (pieces, stages,
+/// what each break plays and tells the scripts), later zones replacing
+/// earlier; client-only ones are left to the clients.
+fn destructible_defs(captures: &[&ZoneCapture]) -> Vec<std::sync::Arc<xmodel_runtime::T5DestructibleDef>> {
+    let text = |s: &str| (!s.is_empty()).then(|| s.to_owned());
+    let mut defs: Vec<std::sync::Arc<xmodel_runtime::T5DestructibleDef>> = Vec::new();
+    for c in captures {
+        for d in &c.destructibles {
+            if !real(&d.name) || !real(&d.model) || d.pieces.is_empty() || d.client_only {
+                continue;
+            }
+            let pieces = d
+                .pieces
+                .iter()
+                .map(|p| xmodel_runtime::T5DestructiblePiece {
+                    stages: p.stages.clone().map(|st| xmodel_runtime::T5DestructibleStage {
+                        show_bone: text(&st.show_bone),
+                        break_health: st.break_health,
+                        max_time: st.max_time,
+                        flags: st.flags,
+                        break_effect: text(&st.break_effect),
+                        break_sound: text(&st.break_sound),
+                        break_notify: text(&st.break_notify),
+                        loop_sound: text(&st.loop_sound),
+                        has_phys_preset: st.phys_preset,
+                        spawn_models: st.spawn_models.clone().map(|m| text(&m)),
+                    }),
+                    parent_piece: p.parent_piece,
+                    parent_damage_percent: p.parent_damage_percent,
+                    bullet_damage_scale: p.bullet_damage_scale,
+                    explosive_damage_scale: p.explosive_damage_scale,
+                    melee_damage_scale: p.melee_damage_scale,
+                    health: p.health,
+                    hide_bones: p.hide_bones,
+                })
+                .collect();
+            defs.retain(|x| !x.name.eq_ignore_ascii_case(&d.name));
+            defs.push(std::sync::Arc::new(xmodel_runtime::T5DestructibleDef {
+                name: d.name.clone(),
+                model: d.model.clone(),
+                pieces,
+                client_only: false,
+            }));
+        }
+    }
+    defs
+}
+
 /// bo2mp: a map's entity text with each destructible built from its
 /// definition. An entity with a `destructibledef` carries the editor's
 /// stand-in in `model` (`veh_t6_police_car`, no such model in any zone);
@@ -2136,6 +2184,11 @@ pub(crate) fn load_t6_combat(
                 .iter()
                 .map(|t| destructible_entities(t, &destructibles)),
         );
+        // bo2mp: every destructible the map's entities can name.
+        for d in destructible_defs(&[*c]) {
+            scripts.destructibles.retain(|x| x.name != d.name);
+            scripts.destructibles.push(d);
+        }
         if !c.path_nodes.is_empty() {
             scripts.path_nodes = c.path_nodes.clone();
         }
@@ -2159,6 +2212,10 @@ pub(crate) fn load_t6_combat(
                 let text = String::from_utf8_lossy(bytes).into_owned();
                 scripts.gamesettings.retain(|(n, _)| n != name);
                 scripts.gamesettings.push((name.clone(), text));
+            }
+            // bo2mp: how a dead body goes limp.
+            if lower == "ragdoll.cfg" {
+                scripts.ragdoll = Some(String::from_utf8_lossy(bytes).into_owned());
             }
             // bo2mp: how players look to others (third-person animations).
             if name == "mp/playeranim.script" {

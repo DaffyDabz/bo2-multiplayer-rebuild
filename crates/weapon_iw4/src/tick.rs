@@ -27,6 +27,10 @@ pub enum MissingCombatFacts {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct CapturedCombatInput {
     pub fire_time_ms: i32,
+    /// bo2zm: Black Ops II's faster first shots of a trigger pull
+    /// (`iIntroFireTime`, `iIntroFireLength`): the HAMR, AN-94 and B23R.
+    pub intro_fire_time_ms: i32,
+    pub intro_fire_length: i32,
     pub fire_delay_ms: i32,
     pub raise_time_ms: i32,
     pub drop_time_ms: i32,
@@ -169,6 +173,10 @@ pub struct WeaponCombatFacts {
     pub ducked_sprint_cycle_scale: f32,
     pub dtp_cycle_scale: f32,
     pub fire_time_ms: i32,
+    /// bo2zm: the first `intro_fire_length` shots of a trigger pull come
+    /// `intro_fire_time_ms` apart (Black Ops II's HAMR, AN-94, B23R).
+    pub intro_fire_time_ms: i32,
+    pub intro_fire_length: i32,
     pub fire_delay_ms: i32,
     pub raise_time_ms: i32,
     pub drop_time_ms: i32,
@@ -311,6 +319,8 @@ impl WeaponCombatFacts {
         Self {
             aim_assist: AimAssistRanges::NONE,
             fire_time_ms: 0,
+            intro_fire_time_ms: 0,
+            intro_fire_length: 0,
             fire_delay_ms: 0,
             raise_time_ms: 0,
             drop_time_ms: 0,
@@ -425,6 +435,8 @@ impl WeaponCombatFacts {
         Ok(Self {
             aim_assist: AimAssistRanges::NONE,
             fire_time_ms: input.fire_time_ms,
+            intro_fire_time_ms: input.intro_fire_time_ms,
+            intro_fire_length: input.intro_fire_length,
             fire_delay_ms: input.fire_delay_ms,
             raise_time_ms: input.raise_time_ms,
             drop_time_ms: input.drop_time_ms,
@@ -673,6 +685,10 @@ pub struct WeaponCmd {
 
     pub mantle_quick_raise: bool,
 
+    /// bo2zm: a low Black Ops II climb: the gun stays up and fires, but
+    /// cannot be switched or start a reload until the climb ends.
+    pub mantle_weapon_up: bool,
+
     pub cmd_weapon_owned: bool,
 
     pub cmd_weapon_pistol_quick: bool,
@@ -688,6 +704,9 @@ pub struct WeaponCmd {
     pub perks0: u32,
 
     pub perk_weap_reload_multiplier: f32,
+
+    /// bo2zm: the move input (forward, right) the crawl animation follows.
+    pub move_input: [i8; 2],
 }
 
 impl Default for WeaponCmd {
@@ -711,6 +730,7 @@ impl Default for WeaponCmd {
             melee_started: None,
             mantle_weapon_inactive: false,
             mantle_quick_raise: false,
+            mantle_weapon_up: false,
             cmd_weapon_owned: false,
             cmd_weapon_pistol_quick: false,
             switch_raise_time_ms: 0,
@@ -720,6 +740,7 @@ impl Default for WeaponCmd {
             offhand: crate::offhand::OffhandCmd::default(),
             perks0: 0,
             perk_weap_reload_multiplier: PERK_WEAP_RELOAD_MULTIPLIER_DEFAULT,
+            move_input: [0; 2],
         }
     }
 }
@@ -957,6 +978,8 @@ pub fn weapon_ordinary(
 
     crate::sprint::weapon_check_for_sprint(hand, facts, cmd.pm_flags);
     crate::sprint::weapon_advance_sprint(hand, &mut cmd.weap_flags, &mut cmd.pm_flags, cmd.pm_type);
+    crate::sprint::weapon_dive_anim(hand, cmd.pm_flags);
+    crate::crawl::weapon_crawl_anim(hand, cmd.pm_flags, cmd.pm_type, cmd.buttons, cmd.move_input);
     if let Some(melee) = crate::melee::weapon_advance_melee(
         hand,
         &facts.melee_facts(),
@@ -984,7 +1007,8 @@ pub fn weapon_ordinary(
 
     let reload = cmd.buttons & BUTTON_RELOAD != 0;
     let reload_edge = reload && cmd.old_buttons & BUTTON_RELOAD == 0;
-    if crate::reload::weapon_process_input_wants_reload(hand, facts, reload_edge, cmd.pm_flags)
+    if !cmd.mantle_weapon_up
+        && crate::reload::weapon_process_input_wants_reload(hand, facts, reload_edge, cmd.pm_flags)
         && begin_weapon_reload(hand, facts)
     {
         return Some(WeaponTickEvent::ReloadStarted);
@@ -1042,6 +1066,13 @@ pub fn weapon_ordinary(
                             crate::weap_anim::weap_anim_event::IDLE,
                             cmd.pm_type,
                         );
+                        // bo2zm: trigger up ends an automatic gun's string;
+                        // the next pull starts with its first shots again.
+                        // Cleared with the idle edge, so the count change
+                        // never reads as a shot.
+                        if fire_ty.is_full_auto() {
+                            hand.shot_count = 0;
+                        }
                     }
                     hand.weaponstate = WeaponState::Ready as i32;
                 }
@@ -1142,7 +1173,7 @@ pub fn weapon_ordinary(
         if trigger {
             if hand.clip <= 0 {
                 hand.shot_count = 0;
-                if hand.stock > 0 && begin_weapon_reload(hand, facts) {
+                if hand.stock > 0 && !cmd.mantle_weapon_up && begin_weapon_reload(hand, facts) {
                     return Some(WeaponTickEvent::ReloadStarted);
                 }
 
@@ -1160,6 +1191,13 @@ pub fn weapon_ordinary(
                 return None;
             }
 
+            // bo2zm: Black Ops II's first shots of a pull come faster (the
+            // HAMR's first 6, the AN-94's and B23R's first one) and play
+            // the gun's first-shots fire animation. Worked out before the
+            // fire-delay split so a held-back shot plays the same animation.
+            let intro = facts.intro_fire_time_ms > 0
+                && i32::from(hand.shot_count) < facts.intro_fire_length;
+
             // A shot held back by the weapon's fire delay goes now: its
             // firing began when the trigger was pulled (BO2's care package
             // marker waits 130 ms; re-arming here never let it go).
@@ -1174,7 +1212,12 @@ pub fn weapon_ordinary(
                     );
                 }
                 hand.weaponstate = WeaponState::Firing as i32;
-                hand.weapon_time = facts.fire_time_ms.max(1);
+                hand.weapon_time = if intro {
+                    facts.intro_fire_time_ms
+                } else {
+                    facts.fire_time_ms
+                }
+                .max(1);
                 if facts.ads_fire_only {
                     hand.weapon_delay =
                         ads_fire_only_delay_ms(cmd.f_weapon_pos_frac, facts.ads_in_rate);
@@ -1187,6 +1230,8 @@ pub fn weapon_ordinary(
                         hand.burst_latch = false;
                     }
                     hand.shot_count = hand.shot_count.saturating_add(1).min(4);
+                } else if intro {
+                    hand.shot_count = hand.shot_count.saturating_add(1);
                 }
                 if hand.weapon_delay != 0 {
                     return None;
@@ -1204,6 +1249,7 @@ pub fn weapon_ordinary(
                 &mut hand.weap_anim,
                 cmd.f_weapon_pos_frac > 0.0,
                 hand.clip <= 0,
+                intro,
             );
             return Some(WeaponTickEvent::ShotAccepted { ammo_used: used });
         }
@@ -1511,5 +1557,87 @@ pub fn spawn_weapon_hand(weapon: u32, facts: &WeaponCombatFacts) -> WeaponHandSt
         delayed_rechamber: false,
         weapon_restrict_kick_time: 0,
         quick_reload: facts.dual_mag.is_some(),
+    }
+}
+
+#[cfg(test)]
+mod intro_fire_tests {
+    extern crate std;
+    use super::*;
+    use std::vec::Vec;
+
+    /// Holds the trigger for `ms` (or lets it go) and returns the times,
+    /// from the start, of each shot.
+    fn hold(
+        hand: &mut WeaponHandState,
+        facts: &WeaponCombatFacts,
+        attack: bool,
+        ms: i32,
+    ) -> Vec<i32> {
+        let mut shots = Vec::new();
+        let mut t = 0;
+        while t < ms {
+            let clip = hand.clip;
+            let mut cmd = WeaponCmd {
+                msec: 8,
+                buttons: if attack { BUTTON_ATTACK } else { 0 },
+                old_buttons: if attack { BUTTON_ATTACK } else { 0 },
+                ..WeaponCmd::default()
+            };
+            weapon_ordinary(hand, facts, &mut cmd);
+            if hand.clip < clip {
+                shots.push(t);
+            }
+            t += 8;
+        }
+        shots
+    }
+
+    fn gaps(shots: &[i32]) -> Vec<i32> {
+        shots.windows(2).map(|w| w[1] - w[0]).collect()
+    }
+
+    /// Black Ops II's HAMR: its first 6 shots of a pull 64 ms apart, then 96.
+    #[test]
+    fn the_hamr_fires_its_first_shots_faster_every_pull() {
+        let facts = WeaponCombatFacts {
+            fire_time_ms: 96,
+            intro_fire_time_ms: 64,
+            intro_fire_length: 6,
+            clip_size: 100,
+            start_ammo: 100,
+            fire_type: FireType::FullAuto as i32,
+            ..WeaponCombatFacts::default()
+        };
+        let mut hand = WeaponHandState {
+            weapon: 1,
+            clip: 100,
+            ..WeaponHandState::default()
+        };
+        let pull = hold(&mut hand, &facts, true, 1000);
+        assert_eq!(gaps(&pull)[..8], [64, 64, 64, 64, 64, 64, 96, 96]);
+        hold(&mut hand, &facts, false, 200);
+        assert_eq!(hand.shot_count, 0);
+        let again = hold(&mut hand, &facts, true, 1000);
+        assert_eq!(gaps(&again)[..8], [64, 64, 64, 64, 64, 64, 96, 96]);
+    }
+
+    #[test]
+    fn a_gun_without_first_shots_fires_evenly() {
+        let facts = WeaponCombatFacts {
+            fire_time_ms: 96,
+            clip_size: 100,
+            start_ammo: 100,
+            fire_type: FireType::FullAuto as i32,
+            ..WeaponCombatFacts::default()
+        };
+        let mut hand = WeaponHandState {
+            weapon: 1,
+            clip: 100,
+            ..WeaponHandState::default()
+        };
+        let pull = hold(&mut hand, &facts, true, 1000);
+        assert!(gaps(&pull).iter().all(|&g| g == 96), "{:?}", gaps(&pull));
+        assert_eq!(hand.shot_count, 0);
     }
 }

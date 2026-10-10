@@ -6,6 +6,7 @@ pub mod item;
 pub mod killcam;
 pub mod match_reset;
 pub mod missile;
+pub mod ragdoll;
 pub mod remote_body;
 pub mod script_model;
 pub mod t6_body;

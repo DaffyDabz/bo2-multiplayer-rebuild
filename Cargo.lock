@@ -1957,6 +1957,7 @@ version = "0.1.0"
 dependencies = [
  "asset_t6",
  "asset_transport",
+ "asset_world",
  "bcdec_rs",
  "fastfile_t6",
  "gsc_t6",

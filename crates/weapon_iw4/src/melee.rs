@@ -182,6 +182,13 @@ pub fn weapon_start_melee(
             weap_anim_event::MELEE,
         )
     };
+    // bo2zm: an empty magazine plays Black Ops II's empty-magazine melee (a
+    // gun without one plays its full one).
+    let anim = match (anim, primary.clip) {
+        (weap_anim_event::MELEE, 0) => weap_anim_event::MELEE_EMPTY,
+        (weap_anim_event::MELEE_CHARGE, 0) => weap_anim_event::MELEE_CHARGE_EMPTY,
+        _ => anim,
+    };
 
     primary.weapon_time = time.max(1);
     primary.weapon_delay = delay.max(0);
@@ -325,5 +332,47 @@ pub fn weapon_advance_melee(
             None
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod bo2_empty_tests {
+    use super::*;
+
+    fn knife(clip: i32, charge: bool) -> u32 {
+        let mut hand = WeaponHandState {
+            weapon: 1,
+            clip,
+            ..WeaponHandState::default()
+        };
+        let facts = MeleeWeaponFacts {
+            melee_time_ms: 500,
+            melee_charge_time_ms: 600,
+            ..MeleeWeaponFacts::default()
+        };
+        weapon_start_melee(&mut hand, None, &facts, 0, 0, charge);
+        hand.weap_anim as u32 & crate::WEAP_ANIM_EVENT_MASK
+    }
+
+    #[test]
+    fn an_empty_magazine_knifes_with_the_empty_animation() {
+        assert_eq!(knife(12, false), weap_anim_event::MELEE);
+        assert_eq!(knife(12, true), weap_anim_event::MELEE_CHARGE);
+        assert_eq!(knife(0, false), weap_anim_event::MELEE_EMPTY);
+        assert_eq!(knife(0, true), weap_anim_event::MELEE_CHARGE_EMPTY);
+        assert_eq!(
+            crate::slot_for_weap_anim_event(weap_anim_event::MELEE_EMPTY),
+            Some(crate::weap_anim_extra::MELEE_EMPTY)
+        );
+        // Both play over the gun's melee time, like the full ones.
+        assert!(!crate::slot_uses_native_rate(
+            asset_iw4::size::weap_anim::MELEE
+        ));
+        assert!(!crate::slot_uses_native_rate(
+            crate::weap_anim_extra::MELEE_EMPTY
+        ));
+        assert!(!crate::slot_uses_native_rate(
+            crate::weap_anim_extra::MELEE_CHARGE_EMPTY
+        ));
     }
 }

@@ -1542,7 +1542,7 @@ fn lui_hud(
         })
         .flatten();
     hud.shots = shots;
-    let drawn: Vec<Drawn> = hud
+    let mut drawn: Vec<Drawn> = hud
         .host
         .drawn()
         .into_iter()
@@ -1588,48 +1588,6 @@ fn lui_hud(
             hud.end_rows_logged = true;
         }
     }
-    // bo2mp: the card BO2 shows at his death, before the killcam: the
-    // Killcam widget's title and bands wait (the HUD stays), and the engine's
-    // "Killed By" stands over the card.
-    let mut drawn = drawn;
-    // (Not under a menu: a full-screen black dim up - the pause menu or its
-    // End Game popup - means the card is not on screen; BO2 shows no
-    // "Killed By" there.)
-    let menu_dim = drawn.iter().any(|d| {
-        d.kind == "image" && d.rgb == [0.0, 0.0, 0.0] && d.alpha > 0.3 && (d.rect[2] - d.rect[0]).abs() > 1200.0 && (d.rect[3] - d.rect[1]).abs() > 700.0
-    });
-    if !menu_dim && hud.host.values.borrow().dvars.get("bo2mp_deathcard").is_some_and(|v| v == "1") {
-        drawn.retain(|d| {
-            let h = (d.rect[3] - d.rect[1]).abs();
-            let at_edge = d.rect[1].min(d.rect[3]) <= 1.0 || d.rect[1].max(d.rect[3]) >= 719.0;
-            let band = d.kind == "image" && d.material.is_none() && (60.0..=130.0).contains(&h) && at_edge;
-            let title = d.text.as_deref().is_some_and(|t| t.to_uppercase().contains("KILLCAM"));
-            !band && !title
-        });
-        let label = hud.host.values.borrow().localize.get("CGAME_KILLEDBY").cloned().unwrap_or_else(|| "Killed By".to_owned());
-        drawn.push(Drawn {
-            id: usize::MAX - 7,
-            kind: "text",
-            rect: [520.0, 578.0, 760.0, 600.0],
-            alpha: 1.0,
-            rgb: [1.0, 1.0, 1.0],
-            material: None,
-            text: Some(label),
-            font: Some("fonts/smallFont".to_owned()),
-            alignment: 1,
-            z_rot: 0.0,
-            x_rot: 0.0,
-            y_rot: 0.0,
-            dashes: (0, 0, 0),
-            dash_pitch: 0.0,
-            tiles: 0.0,
-            shader: [0.0; 4],
-            blur: false,
-            behind: false,
-            clip: None,
-        });
-    }
-
     // (bo2mp: the loading screen's root is the loading layer's, over the
     // engine's own loading screen; a root on another layer goes.)
     let root = match roots.iter().next() {

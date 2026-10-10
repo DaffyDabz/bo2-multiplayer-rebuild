@@ -381,6 +381,7 @@ pub(crate) fn advance_weapon_command(
 
             mantle_weapon_inactive: is_weapon_inactive(&ps, true),
             mantle_quick_raise: (ps.mantle_flags & mantle_flags::QUICK) != 0,
+            mantle_weapon_up: mantle_flags::bo2_weapon_up(&ps),
             cmd_weapon_owned: {
                 let w = if cmd.weapon != 0 {
                     u32::from(cmd.weapon)
@@ -431,6 +432,7 @@ pub(crate) fn advance_weapon_command(
             },
             perks0: ps.perks[0],
             perk_weap_reload_multiplier: weapon_iw4::PERK_WEAP_RELOAD_MULTIPLIER_DEFAULT,
+            move_input: [cmd.forwardmove, cmd.rightmove],
             offhand: {
                 let mut inventory = [OffhandInvRow::default(); OFFHAND_INV_SLOTS];
                 for (i, &slot) in ps.weapons.iter().enumerate() {
@@ -1308,6 +1310,15 @@ pub(crate) fn phase_trace(
             if exit || !world.publishes_snapshot() || scaled <= 0 {
                 continue;
             }
+            if std::env::var_os("IW4L_T6_HITLOG").is_some() {
+                diag::info!(
+                    Sim,
+                    "bo2mp bullet struck {:?} at {:?} surface {} for {scaled}",
+                    segment.collider,
+                    segment.end,
+                    segment.surf_type
+                );
+            }
             match segment.collider {
                 Some(ColliderId::Player { .. }) => {}
                 Some(
@@ -1321,6 +1332,8 @@ pub(crate) fn phase_trace(
                             owner,
                             bone,
                             scaled as u32,
+                            Some(em.attacker),
+                            em.weapon,
                         )
                     {
                         continue;

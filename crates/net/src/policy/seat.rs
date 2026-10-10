@@ -318,6 +318,13 @@ fn rebase_archived_world(out: &mut Snapshot, viewer: ClientId, delta_ms: i32) {
         p.detonate_at_ms = p.detonate_at_ms.map(|t| t.wrapping_add(delta_ms));
         p.cleanup_at_ms = p.cleanup_at_ms.wrapping_add(delta_ms);
     }
+    // A body that went limp inside the replay falls on the replay's clock
+    // (on the live one it is seconds into its fall, far under the map).
+    for slot in &mut out.meta.corpses.slots {
+        if slot.tr_time != 0 {
+            slot.tr_time = slot.tr_time.wrapping_add(delta_ms);
+        }
+    }
     for (id, ps) in &mut out.players {
         if *id != viewer {
             rebase_archived_timers(ps, delta_ms);

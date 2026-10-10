@@ -13,6 +13,7 @@ pub struct T5DestructiblePiece {
     pub parent_damage_percent: f32,
     pub bullet_damage_scale: f32,
     pub explosive_damage_scale: f32,
+    pub melee_damage_scale: f32,
     pub health: i32,
     pub hide_bones: [u32; 5],
 }

@@ -193,6 +193,17 @@ pub fn view_height_lerp_duration(lerp_target: i32, lerp_down: i32) -> i32 {
     }
 }
 
+/// bo2zm: getting up from a dive runs the stance change at twice the speed
+/// (an owner's ask).
+fn lerp_duration(ps: &PlayerState, lerp_target: i32, lerp_down: i32) -> i32 {
+    let duration = view_height_lerp_duration(lerp_target, lerp_down);
+    if ps.pm_flags & crate::dive::PMF_DIVE_GETUP != 0 {
+        duration / 2
+    } else {
+        duration
+    }
+}
+
 type Knot = (i32, f32);
 
 const CROUCH_FROM_STAND: &[Knot] = &[
@@ -324,7 +335,7 @@ pub fn update_view_height(ps: &mut PlayerState, pml: &Pml, cmd: &UserCmd) {
     let mut progress = 0i32;
     if ps.view_height_lerp_time != 0 {
         let lerp_target = ps.view_height_lerp_target;
-        let duration = view_height_lerp_duration(lerp_target, ps.view_height_lerp_down);
+        let duration = lerp_duration(ps, lerp_target, ps.view_height_lerp_down);
         progress = cmd
             .server_time
             .wrapping_sub(ps.view_height_lerp_time)
@@ -430,7 +441,7 @@ fn reverse_view_height_lerp(ps: &mut PlayerState, cmd: &UserCmd, progress: i32) 
         return;
     }
 
-    let duration = view_height_lerp_duration(ps.view_height_lerp_target, down);
+    let duration = lerp_duration(ps, ps.view_height_lerp_target, down);
     let elapsed = ((duration as f32) * (progress as f32) * REVERSE_REWIND_SCALE) as i32;
     ps.view_height_lerp_time = cmd.server_time.wrapping_sub(elapsed);
 }
@@ -486,14 +497,13 @@ pub enum StanceChange {
 
 #[must_use]
 pub fn stance_speed_scale(ps: &PlayerState, server_time: i32, last_stand_scale: f32) -> f32 {
-    const TRANSITION_MS: f32 = 400.0;
-
     const PRONE_SCALE: f32 = 0.15;
 
     const CROUCH_SCALE: f32 = 0.65;
 
     if ps.view_height_lerp_time != 0 && ps.view_height_lerp_target == view_height::PRONE {
-        let fraction = (server_time.wrapping_sub(ps.view_height_lerp_time) as f32) / TRANSITION_MS;
+        let transition_ms = lerp_duration(ps, view_height::PRONE, 1) as f32;
+        let fraction = (server_time.wrapping_sub(ps.view_height_lerp_time) as f32) / transition_ms;
         if fraction >= 0.0 {
             let fraction = if fraction > 1.0 { 1.0 } else { fraction };
             if fraction != 0.0 {
@@ -506,7 +516,8 @@ pub fn stance_speed_scale(ps: &PlayerState, server_time: i32, last_stand_scale: 
         && ps.view_height_lerp_target == view_height::CROUCH
         && ps.view_height_lerp_down == 0
     {
-        let fraction = (server_time.wrapping_sub(ps.view_height_lerp_time) as f32) / TRANSITION_MS;
+        let transition_ms = lerp_duration(ps, view_height::CROUCH, 0) as f32;
+        let fraction = (server_time.wrapping_sub(ps.view_height_lerp_time) as f32) / transition_ms;
         if fraction >= 0.0 {
             let fraction = if fraction > 1.0 { 1.0 } else { fraction };
             if fraction != 0.0 {

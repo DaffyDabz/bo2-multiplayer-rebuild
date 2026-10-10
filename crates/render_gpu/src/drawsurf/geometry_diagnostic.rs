@@ -2874,6 +2874,7 @@ pub(super) fn register(app: &mut App) {
     }
     bevy::asset::embedded_asset!(app, "geometry_diagnostic.wgsl");
     super::bo2_bloom::register(app);
+    super::bo2_dof::register(app);
     let Some(render_app) = app.get_sub_app_mut(bevy::render::RenderApp) else {
         return;
     };

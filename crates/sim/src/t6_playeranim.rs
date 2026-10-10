@@ -720,7 +720,9 @@ mod tests {
     #[test]
     fn parses_and_picks() {
         let s = T6PlayerAnims::parse(SCRIPT, "none\ndefault\nhold\nm203").unwrap();
-        assert_eq!(s.anims, ["pb_prone_hold", "pb_stand_alert_pistol", "pb_stand_alert", "pt_stand_shoot"]);
+        // The script's anims, then the engine's mantle clips.
+        assert_eq!(s.anims[..4], ["pb_prone_hold", "pb_stand_alert_pistol", "pb_stand_alert", "pt_stand_shoot"]);
+        assert_eq!(s.anims[4], "mp_mantle_up_57");
         let mut f = T6AnimFacts::default();
         assert_eq!(s.pick_move("idle", &f).unwrap()[0].anim, 2);
         f.weapon_class = "pistol";

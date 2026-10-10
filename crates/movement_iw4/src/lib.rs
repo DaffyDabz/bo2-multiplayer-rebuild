@@ -48,7 +48,7 @@ pub use dmgtimer::{
     PLAYER_DMGTIMER_MIN_SCALE, PLAYER_DMGTIMER_STUMBLE_TIME_MS, PLAYER_DMGTIMER_TIME_PER_POINT,
     damage_scale_walk, damage_window_open, update_damage_timer, walk_move_drop_damage_timer,
 };
-pub use dive::{PMF_DIVE, PMF_DIVE_PRONE, PMF_DIVE_SLIDE}; // bo2zm
+pub use dive::{PMF_DIVE, PMF_DIVE_GETUP, PMF_DIVE_PRONE, PMF_DIVE_SLIDE}; // bo2zm
 pub use drop_timers::drop_timers;
 pub use events::{SequencedPlayerEvent, add_event, add_predictable_event, consume_player_events};
 pub use footstep::{
@@ -76,7 +76,7 @@ pub use mantle::{
     MANTLE_XANIM_TREE_SIZE, MantleCapViewContext, MantleCapsuleTrace, MantleCheckContext,
     MantleFindLedgeContext, MantleFrontProbeCast, MantleLedgeBackend, MantleLedgeProbe,
     MantleLedgeProbeLog, MantleMoveContext, MantleResults, MantleRootDelta, MantleXAnimLength,
-    SURF_MANTLE_ON_OR_OVER, SURF_MANTLE_OVER, ZeroMantleRootDelta,
+    PERK_FASTMANTLE, SURF_MANTLE_ON_OR_OVER, SURF_MANTLE_OVER, ZeroMantleRootDelta,
 };
 pub use melee_charge::{
     MeleeChargeWeaponDelays, PLAYER_MELEE_RANGE_DEFAULT as MELEE_CHARGE_PLAYER_MELEE_RANGE_DEFAULT,

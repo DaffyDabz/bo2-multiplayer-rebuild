@@ -170,6 +170,14 @@ only. Like upstream IW4L, much of this code was written by an LLM (Claude), dire
 
 ## Recent changes
 
+- 2026-10-09: the Lodestar puts your view on the drone with the game's own Lodestar screen (thermal at the
+  start, mouse wheel up switches thermal and normal, left mouse fires missiles onto your laser, hold F to leave),
+  the Killed By card shows and stays up while you are dead, bodies fall as ragdolls (the killcam replays them), the
+  world blurs behind your sights and while you are dead, names over heads use the game's font, and Nuketown's cars
+  break when shot.
+- 2026-10-09: movement and guns closer to Black Ops II: sprint and dive in any direction, aim and fire through a
+  dive, a quicker get-up, the game's own gun animations for diving, crawling, sprinting on an empty magazine and
+  climbing, the fast-climb perk, and the HAMR, AN-94 and B23R fire their first shots faster.
 - 2026-10-09: a launcher on a player's back hangs slung the way Black Ops II carries it, SMG and pistol kills count
   as the right kind of bullet (a rocket's direct hit is no longer cut by Flak Jacket), and the HUD reads the game's
   own weapon names.
@@ -187,11 +195,10 @@ only. Like upstream IW4L, much of this code was written by an LLM (Claude), dire
 
 ## Coming soon
 
-- The Killed By card, the blur behind your sights, names over players' heads, and Nuketown's breakable mannequins,
-  cars and clock.
+- Nuketown's mannequins and clock break when shot.
+- The Lodestar's zoom; the Hellstorm's steer prompt key.
 - Movement and gun-feel numbers checked side by side against the original game.
-- The Lodestar's vehicle screen.
-- Live sun shadows; ragdoll deaths.
+- Live sun shadows; blood on hits as the original shows it.
 - More per-map test runs to fill in the mechanics bars; visual comparison shots for each map.
 - Playing together over LAN, and one build with Black Ops II's main menu for both Multiplayer and Zombies.
 

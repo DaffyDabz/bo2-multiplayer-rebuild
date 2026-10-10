@@ -635,7 +635,12 @@ impl AuthorityDObjState {
             self.world_from_model,
             MASK_BULLET_WORLD,
         ) {
-            Ok(bones) => {
+            Ok(mut bones) => {
+                // bo2mp: a destructible's hidden pieces (broken off, or a
+                // stage not reached yet) stop nothing.
+                if self.t5_destructible.is_some() {
+                    bones.retain(|b| !self.pose_request.hide_part_bits.get(usize::from(b.bone)));
+                }
                 let coll = coll_trace_from_capability(
                     capability,
                     &self.pose_request,

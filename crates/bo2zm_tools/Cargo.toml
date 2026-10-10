@@ -68,6 +68,7 @@ sab_t6.workspace = true
 png.workspace = true
 bcdec_rs.workspace = true
 xmodel_runtime.workspace = true
+asset_world.workspace = true
 
 [lints]
 workspace = true
@@ -103,3 +104,11 @@ path = "src/bin/t6alt.rs"
 [[bin]]
 name = "t6dups"
 path = "src/bin/t6dups.rs"
+
+[[bin]]
+name = "t6fxdump"
+path = "src/bin/t6fxdump.rs"
+
+[[bin]]
+name = "t6drop"
+path = "src/bin/t6drop.rs"

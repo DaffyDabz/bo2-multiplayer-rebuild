@@ -321,7 +321,8 @@ fn run_players_system(ecs: &mut World) {
             let (ads_in_rate, ads_out_rate, rechamber_while_ads, ads_fire_only) = facts
                 .map(|f| f.ads_frac_context())
                 .unwrap_or((1.0 / 200.0, 1.0 / 200.0, true, false));
-            let mut feel = bo2_feel(world.ecs());
+            let predicting = !world.publishes_snapshot();
+            let mut feel = bo2_feel(world.ecs(), predicting);
             if feel.on
                 && let Some(f) = facts
             {
@@ -2048,17 +2049,43 @@ fn clip_move_to_players(
     hit
 }
 
+/// bo2zm: the rules the game in this process last ran with. The local
+/// player's own guess of their move (the prediction world) has no scripts of
+/// its own, so it borrows these; without them it guessed with MW2 rules while
+/// the game ran BO2's, and a dive jumped back on every correction.
+static HOST_FEEL: std::sync::Mutex<Option<movement_iw4::Bo2Feel>> = std::sync::Mutex::new(None);
+
 /// bo2zm: the Black Ops II movement rules, on in a Black Ops II game.
 /// `BO2_FEEL=mw2` turns them off (the old MW2 movement) for side-by-side
-/// clips. Values the scripts set win over the defaults.
-fn bo2_feel(ecs: &World) -> movement_iw4::Bo2Feel {
-    static MW2: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    let mw2 =
-        *MW2.get_or_init(|| std::env::var("BO2_FEEL").is_ok_and(|v| v.eq_ignore_ascii_case("mw2")));
+/// clips. Values the scripts set win over the defaults. `predicting` = this
+/// is the local player's guess, not the game itself.
+fn bo2_feel(ecs: &World, predicting: bool) -> movement_iw4::Bo2Feel {
     // The Black Ops II scripts' own dvars (setdvar); none = no T6 game.
     let Some(t6) = ecs.get_resource::<crate::t6::T6Runtime>() else {
+        if predicting {
+            return HOST_FEEL
+                .lock()
+                .ok()
+                .and_then(|f| *f)
+                .unwrap_or(movement_iw4::Bo2Feel::IW4);
+        }
+        if let Ok(mut f) = HOST_FEEL.lock() {
+            *f = None;
+        }
         return movement_iw4::Bo2Feel::IW4;
     };
+    let feel = bo2_feel_from(t6);
+    if !predicting && let Ok(mut f) = HOST_FEEL.lock() {
+        *f = Some(feel);
+    }
+    feel
+}
+
+fn bo2_feel_from(t6: &crate::t6::T6Runtime) -> movement_iw4::Bo2Feel {
+    static MW2: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    static OMNI: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    let mw2 =
+        *MW2.get_or_init(|| std::env::var("BO2_FEEL").is_ok_and(|v| v.eq_ignore_ascii_case("mw2")));
     if mw2 {
         return movement_iw4::Bo2Feel::IW4;
     }
@@ -2105,6 +2132,12 @@ fn bo2_feel(ecs: &World) -> movement_iw4::Bo2Feel {
         sprint_cycle_scale: 1.0,
         ducked_sprint_cycle_scale: 1.0,
         dtp_cycle_scale: 1.0,
+        omni: *OMNI.get_or_init(|| {
+            !std::env::var("BO2_OMNI").is_ok_and(|v| v.eq_ignore_ascii_case("off"))
+        }),
+        // Low climbs keep the gun in hand (defaults until real BO2 is read).
+        mantle_weapon_height: number("mantle_weapon_height", 39.0),
+        mantle_weapon_anim_height: number("mantle_weapon_anim_height", 32.0),
     }
 }
 

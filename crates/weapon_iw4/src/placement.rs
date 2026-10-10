@@ -91,6 +91,12 @@ pub struct WeaponMovementOfsInputs {
     pub pos_rot_rate: f32,
 
     pub pos_prone_rot_rate: f32,
+
+    /// bo2zm: Black Ops II's gun offset and turn while a climb keeps it in
+    /// hand (`vMantleOfs`, `vMantleRot`).
+    pub mantle_ofs: [f32; 3],
+
+    pub mantle_rot: [f32; 3],
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -110,6 +116,9 @@ pub struct WeaponMovementKinematics {
     pub pm_flags: u32,
 
     pub frametime: f32,
+
+    /// bo2zm: a Black Ops II climb is keeping the gun in hand.
+    pub bo2_mantle: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -755,6 +764,12 @@ pub fn base_stance_movement_angles(
             &mut origin_target,
             &mut angles_target,
         );
+    }
+    if kinematics.bo2_mantle {
+        for i in 0..3 {
+            origin_target[i] += movement.mantle_ofs[i];
+            angles_target[i] += movement.mantle_rot[i];
+        }
     }
     stance_movement_lerp(
         state,

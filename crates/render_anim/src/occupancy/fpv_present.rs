@@ -718,6 +718,11 @@ pub fn tick_fpv_viewmodel(
         predicted_fire,
         dual,
         dual_offset,
+        mantle_camera: presented.viewweapon_player(local.0).and_then(|ps| {
+            (ps.mantle_flags & playerstate_iw4::mantle_flags::BO2_WEAPON_ANIM != 0)
+                .then(|| playerstate_iw4::mantle_flags::bo2_progress(ps))
+                .flatten()
+        }),
     });
     if let FpvPoseKind::Posed(frame) = &mut kind {
         if weapon_id != 0 && !frame.notetracks.is_empty() {
@@ -977,6 +982,7 @@ pub fn apply_fpv_placement(
         weaponstate_secondary: ps.weaponstate_secondary,
         pm_flags: ps.pm_flags,
         frametime: clock.frametime_secs(),
+        bo2_mantle: playerstate_iw4::mantle_flags::bo2_weapon_up(ps),
     };
     let waveform = calculate_weapon_movement_bob_waveform(WeaponBobWaveformInputs {
         bob_cycle: (ps.bob_cycle as u32 & 0xff) as u8,

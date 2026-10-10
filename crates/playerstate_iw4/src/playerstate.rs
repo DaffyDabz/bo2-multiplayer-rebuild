@@ -195,6 +195,41 @@ pub mod mantle_flags {
 
     pub const QUICK: u32 = 1 << 4;
     pub const FAST_MANTLE: u32 = 1 << 6;
+
+    /// bo2zm: a Black Ops II climb: the gun follows its rules below.
+    pub const BO2: u32 = 1 << 10;
+    /// bo2zm: a low Black Ops II climb keeps the gun in hand.
+    pub const BO2_WEAPON_UP: u32 = 1 << 8;
+    /// bo2zm: ... and plays the gun's climb camera animation over it.
+    pub const BO2_WEAPON_ANIM: u32 = 1 << 9;
+    /// bo2zm: a Black Ops II climb's whole length in ms sits from this bit
+    /// up, so the client can play its gun animation without the climb tree.
+    pub const BO2_DURATION_SHIFT: u32 = 16;
+
+    #[must_use]
+    pub const fn bo2_duration_ms(flags: u32) -> i32 {
+        (flags >> BO2_DURATION_SHIFT) as i32
+    }
+
+    /// bo2zm: how far through a Black Ops II climb the player is (0..=1),
+    /// or `None` outside one.
+    #[must_use]
+    pub fn bo2_progress(ps: &super::PlayerState) -> Option<f32> {
+        if ps.pm_flags & super::pm_flags::MANTLE == 0 || ps.mantle_flags & BO2 == 0 {
+            return None;
+        }
+        let duration = bo2_duration_ms(ps.mantle_flags);
+        if duration <= 0 {
+            return Some(1.0);
+        }
+        Some((ps.mantle_timer as f32 / duration as f32).clamp(0.0, 1.0))
+    }
+
+    /// bo2zm: the gun stays in hand through this Black Ops II climb.
+    #[must_use]
+    pub fn bo2_weapon_up(ps: &super::PlayerState) -> bool {
+        bo2_progress(ps).is_some() && ps.mantle_flags & BO2_WEAPON_UP != 0
+    }
 }
 
 pub const ENTITYNUM_NONE: i32 = 0x7FF;

@@ -479,14 +479,16 @@ impl PreparedFpvRig {
     }
 
     /// One hand's bones for this frame. No skeleton is built here.
+    /// `camera` (bo2zm) is a camera-only clip that takes the camera tag over.
     pub fn pose_hand(
         &self,
         hand: usize,
         anims: &[PosedClip<'_>],
         offset: Vec3,
+        camera: Option<&PosedClip<'_>>,
     ) -> Option<FpvHandPose> {
         let listed: Vec<(usize, &PosedClip<'_>)> = anims.iter().map(|a| (hand, a)).collect();
-        self.pose_listed(hand, &listed, offset)
+        self.pose_listed(hand, &listed, offset, camera)
     }
 
     /// bo2zm: Black Ops II dual wield: one set of arms holding both guns,
@@ -498,13 +500,14 @@ impl PreparedFpvRig {
         &self,
         right: &[PosedClip<'_>],
         left: &[PosedClip<'_>],
+        camera: Option<&PosedClip<'_>>,
     ) -> Option<FpvHandPose> {
         let listed: Vec<(usize, &PosedClip<'_>)> = right
             .iter()
             .map(|a| (0, a))
             .chain(left.iter().map(|a| (1, a)))
             .collect();
-        self.pose_listed(0, &listed, Vec3::ZERO)
+        self.pose_listed(0, &listed, Vec3::ZERO, camera)
     }
 
     /// Clips each bound by the given hand's track table, posed as `hand`.
@@ -513,6 +516,7 @@ impl PreparedFpvRig {
         hand: usize,
         anims: &[(usize, &PosedClip<'_>)],
         offset: Vec3,
+        camera: Option<&PosedClip<'_>>,
     ) -> Option<FpvHandPose> {
         if anims.is_empty() {
             return None;
@@ -545,7 +549,44 @@ impl PreparedFpvRig {
             })
             .collect();
         let assembly = &self.composition.assembly;
-        let world = assembly.dobj.pose(&instances, &self.parts, Mat4::IDENTITY);
+        // bo2zm: a camera-only clip (the climb's) takes the camera tag over
+        // the other clips by its weight; the lens follows the camera tag.
+        let camera = camera.zip(assembly.camera_bone).and_then(|(anim, bone)| {
+            let tracks = self.tracks[0].get(anim.node)?.as_ref()?;
+            let track = tracks
+                .iter()
+                .position(|&b| b != FpvClipTracks::NONE && usize::from(b) == bone)?;
+            let sample = anim.clip.sample_track(track, anim.time)?;
+            Some((bone, sample, anim.weight.clamp(0.0, 1.0)))
+        });
+        let world = assembly.dobj.pose_with_controller(
+            &instances,
+            &self.parts,
+            Mat4::IDENTITY,
+            |_, _, locals| {
+                let Some((bone, sample, weight)) = camera else {
+                    return;
+                };
+                let Some(local) = locals.get_mut(bone) else {
+                    return;
+                };
+                if let Some(q) = sample.rotation {
+                    let q = if anim_iw4::quat_dot(local.rotation, q) < 0.0 {
+                        anim_iw4::quat_neg(q)
+                    } else {
+                        q
+                    };
+                    let r = local.rotation;
+                    local.rotation = anim_iw4::normalize(core::array::from_fn(|i| {
+                        r[i] + (q[i] - r[i]) * weight
+                    }));
+                }
+                if let Some(t) = sample.translation {
+                    let o = local.translation;
+                    local.translation = core::array::from_fn(|i| o[i] + (t[i] - o[i]) * weight);
+                }
+            },
+        );
         let mut skin = assembly.dobj.skin_matrices(&world);
         // A hidden tag's vertices collapse (its surfaces that also hold
         // other bones still draw the rest).

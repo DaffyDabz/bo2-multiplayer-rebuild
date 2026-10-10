@@ -4,6 +4,7 @@
 mod ads_allow;
 mod ads_overlay;
 mod ammo;
+mod crawl;
 pub mod event_sound;
 mod fire_sound;
 mod fire_weapon;
@@ -121,7 +122,8 @@ pub use spread::{
     add_aim_spread_fire, adjust_aim_spread_scale, fire_weapon_spread_degrees,
     get_spread_for_weapon, perk_weap_spread_multiplier,
 };
-pub use sprint::{weapon_advance_sprint, weapon_check_for_sprint};
+pub use crawl::weapon_crawl_anim;
+pub use sprint::{weapon_advance_sprint, weapon_check_for_sprint, weapon_dive_anim};
 pub use sway::{
     SWAY_FRAME_HZ, SWAY_SHELLSHOCK_SMOOTH_PEAK, SwayContribution, SwaySpringState, TRACK_SNAP_EPS,
     WeaponSwayParams, angle_delta, angle_normalize_180, calculate_weapon_movement_sway, clamp_abs,

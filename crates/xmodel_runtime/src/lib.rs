@@ -7,8 +7,8 @@ mod xanim_clip;
 mod xanim_tree;
 
 pub use dobj::{
-    AIM_PITCH_CLAMP_RAD, AnimInstance, Attach, DObj, DObjBoneOrientation, DObjBoneOrientationError,
-    DObjError, HidePartBits, ModelPoseSrc, PLAYER_CONTROLLER_TAGS, PlayerControllerInput,
+    AIM_PITCH_CLAMP_RAD, AnimInstance, Attach, Bone, DObj, DObjBoneOrientation, DObjBoneOrientationError,
+    DObjError, HidePartBits, ModelPoseSrc, ModelSlot, PLAYER_CONTROLLER_TAGS, PlayerControllerInput,
     PlayerControllerResult, TP_HEAD_ATTACH_TAG, TP_WEAPON_ATTACH_TAGS, apply_aim_pitches,
     apply_legs_yaw, apply_player_controller, apply_standing_player_controller, bone_orientation,
     build_body_head_weapon_dobj, build_body_weapon_dobj, empty_tag_attach, pitch_spine_bone,

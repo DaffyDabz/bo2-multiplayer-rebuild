@@ -12,7 +12,7 @@ pub use capture::{
     AabbTreeRef, AssetKey, ClipAabbRef, ClipBrushRef, ClipCmodelRef, ClipLeafBrushNodeRef, ClipLeafRef,
     ClipMaterialRef, ClipNodeRef, ClipRef, ClipStaticModelRef, DpvsRanges, DrawState, EmbeddedImage, ImageRef, LightGridRef, MaterialRef,
     MaterialTexture, PassRef, PathNodeRef, PrimaryLightRef, ReflectionProbeRef, ShaderArgRef, SkyGridVolumeRef, StaticModel, StringTableRef, SunRef, TechniqueRef, TechniqueSetRef,
-    DestructibleRef, VehicleDrive, VehicleRef,
+    DestructiblePieceRef, DestructibleRef, DestructibleStageRef, VehicleDrive, VehicleRef,
     WorldFogRef, WorldRef, WorldSurface, XAnimRef, XModelCollSurfRef, XModelRef, XSurfaceRef, ZoneCapture, read_image,
 };
 pub use entities::{ArtFog, MapEntity, parse_art_fog, parse_entities};

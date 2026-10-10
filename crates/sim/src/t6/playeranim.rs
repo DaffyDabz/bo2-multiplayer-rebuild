@@ -80,6 +80,9 @@ pub(crate) struct Bodies {
     hit_us: (u64, u64, u64),
     /// Each body entity's death animation (`getcorpseanim`).
     corpse_anims: BTreeMap<u32, String>,
+    /// Each body entity's engine corpse: (its slot, that corpse's entity
+    /// number), for `startragdoll` and `launchragdoll`.
+    corpse_slots: BTreeMap<u32, (u8, i32)>,
     rng: u32,
     logged: bool,
 }
@@ -1026,15 +1029,17 @@ pub(super) fn clone_player(vm: &mut Vm<World>, world: &mut World, client: u32) -
         death(world, id, "MOD_UNKNOWN", None, "none");
     }
     let tick = super::tick(world);
-    if crate::script_player::clone_corpse(&mut frame(world), tick, id).is_none() {
+    let Some(slot) = crate::script_player::clone_corpse(&mut frame(world), tick, id) else {
         return Value::Undefined;
-    }
+    };
+    let corpse_entnum = frame(world).corpses().slots[usize::from(slot)].entnum;
     let old = world
         .get_resource_mut::<Bodies>()
         .and_then(|mut b| b.corpses.remove(&client));
     if let Some(n) = old {
         if let Some(mut b) = world.get_resource_mut::<Bodies>() {
             b.corpse_anims.remove(&n);
+            b.corpse_slots.remove(&n);
         }
         let obj = world.resource_mut::<Zm>().ents.remove(&n).and_then(|e| e.obj);
         if let Some(o) = obj {
@@ -1065,11 +1070,61 @@ pub(super) fn clone_player(vm: &mut Vm<World>, world: &mut World, client: u32) -
     });
     if let Some(mut b) = world.get_resource_mut::<Bodies>() {
         b.corpses.insert(client, n);
+        b.corpse_slots.insert(n, (slot, corpse_entnum));
         if let Some(anim) = anim {
             b.corpse_anims.insert(n, anim);
         }
     }
     Value::Object(obj)
+}
+
+/// A body entity's engine corpse slot, while that corpse is still its own
+/// (the pool hands a slot on to a newer corpse).
+fn corpse_slot(vm: &Vm<World>, world: &mut World, s: &Value) -> Option<usize> {
+    let n = super::entnum(vm, s)?;
+    let (slot, entnum) = *world.get_resource::<Bodies>()?.corpse_slots.get(&n)?;
+    let slot = usize::from(slot);
+    let pool = frame(world);
+    let it = pool.corpses().slots.get(slot)?;
+    (it.occupied && it.entnum == entnum).then_some(slot)
+}
+
+/// Ragdoll trajectories: 10 the body going limp where it lies, 11 limp and
+/// thrown (a `launchragdoll` when its duration is 1), 12 come to rest.
+const TR_RAGDOLL: i32 = 10;
+const TR_RAGDOLL_GRAVITY: i32 = 11;
+
+/// `startragdoll` / `launchragdoll`: the body goes limp (the clients'
+/// ragdoll takes it from its death animation), thrown by `launch` if given.
+fn go_limp(world: &mut World, slot: usize, launch: Option<[f32; 3]>) {
+    let time = crate::corpse::level_time_ms(super::tick(world));
+    let mut pool = frame(world);
+    let it = &mut pool.corpses_mut().slots[slot];
+    let limp = (TR_RAGDOLL..=12).contains(&it.tr_type);
+    match launch {
+        Some(v) => {
+            it.tr_type = TR_RAGDOLL_GRAVITY;
+            it.tr_delta = v;
+            it.tr_duration = 1;
+            it.falling = true;
+        }
+        None if limp => return,
+        // Still falling: it keeps falling, limp.
+        None if it.falling => {
+            it.tr_type = TR_RAGDOLL_GRAVITY;
+            it.tr_duration = 0;
+        }
+        None => {
+            it.tr_type = TR_RAGDOLL;
+            it.tr_delta = [0.0; 3];
+            it.tr_duration = 0;
+        }
+    }
+    it.tr_base = it.origin;
+    it.tr_time = time;
+    if std::env::var_os("BO2MP_BODYDRAWLOG").is_some() {
+        diag::info!(World, "bo2mp ragdoll: corpse slot {slot} limp, launch {launch:?}");
+    }
 }
 
 /// An animation value's name (a `%anim` reference or a name string).
@@ -1147,7 +1202,25 @@ pub(super) fn bind(vm: &mut Vm<World>) {
         });
         Ok(name.map_or(Value::Undefined, |n| vm.string(&n)))
     });
-    vm.bind("isragdoll", true, |_, _, _, _| Ok(Value::Int(0)));
+    vm.bind("isragdoll", true, |vm, world, s, _| {
+        let limp = corpse_slot(vm, world, s).is_some_and(|slot| {
+            (TR_RAGDOLL..=12).contains(&frame(world).corpses().slots[slot].tr_type)
+        });
+        Ok(Value::Int(i32::from(limp)))
+    });
+    // On a body the engine keeps (a corpse); anything else stays as it is.
+    vm.bind("startragdoll", true, |vm, world, s, _| {
+        if let Some(slot) = corpse_slot(vm, world, s) {
+            go_limp(world, slot, None);
+        }
+        Ok(Value::Undefined)
+    });
+    vm.bind("launchragdoll", true, |vm, world, s, a| {
+        if let Some(slot) = corpse_slot(vm, world, s) {
+            go_limp(world, slot, super::vec3(a, 0).ok());
+        }
+        Ok(Value::Undefined)
+    });
     vm.bind("animhasnotetrack", false, |vm, world, _, a| {
         let Some(anim) = anim_name(vm, super::arg(a, 0)) else {
             return Ok(Value::Int(0));

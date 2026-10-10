@@ -748,6 +748,7 @@ fn perk_bits(name: &str) -> (u32, u32) {
         "specialty_pistoldeath" => playerstate_iw4::PERK_PISTOLDEATH,
         "specialty_fallheight" => movement_iw4::PERK_FALLHEIGHT,
         "specialty_fastads" => movement_iw4::PERK_FASTADS,
+        "specialty_fastmantle" => movement_iw4::PERK_FASTMANTLE,
         _ => 0,
     };
     let e_flags = match name {

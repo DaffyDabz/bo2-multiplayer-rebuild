@@ -68,6 +68,32 @@ pub enum WeaponAnimSlot {
     AdsRechamber = weap_anim::ADS_RECHAMBER as u8,
     AdsUp = weap_anim::ADS_UP as u8,
     AdsDown = weap_anim::ADS_DOWN as u8,
+    DiveIn = weap_anim_extra::DIVE_IN as u8,
+    DiveLoop = weap_anim_extra::DIVE_LOOP as u8,
+    DiveOut = weap_anim_extra::DIVE_OUT as u8,
+    DiveInEmpty = weap_anim_extra::DIVE_IN_EMPTY as u8,
+    DiveLoopEmpty = weap_anim_extra::DIVE_LOOP_EMPTY as u8,
+    DiveOutEmpty = weap_anim_extra::DIVE_OUT_EMPTY as u8,
+    SprintInEmpty = weap_anim_extra::SPRINT_IN_EMPTY as u8,
+    SprintLoopEmpty = weap_anim_extra::SPRINT_LOOP_EMPTY as u8,
+    SprintOutEmpty = weap_anim_extra::SPRINT_OUT_EMPTY as u8,
+    CrawlIn = weap_anim_extra::CRAWL_IN as u8,
+    CrawlForward = weap_anim_extra::CRAWL_FORWARD as u8,
+    CrawlBack = weap_anim_extra::CRAWL_BACK as u8,
+    CrawlRight = weap_anim_extra::CRAWL_RIGHT as u8,
+    CrawlLeft = weap_anim_extra::CRAWL_LEFT as u8,
+    CrawlOut = weap_anim_extra::CRAWL_OUT as u8,
+    CrawlInEmpty = weap_anim_extra::CRAWL_IN_EMPTY as u8,
+    CrawlForwardEmpty = weap_anim_extra::CRAWL_FORWARD_EMPTY as u8,
+    CrawlBackEmpty = weap_anim_extra::CRAWL_BACK_EMPTY as u8,
+    CrawlRightEmpty = weap_anim_extra::CRAWL_RIGHT_EMPTY as u8,
+    CrawlLeftEmpty = weap_anim_extra::CRAWL_LEFT_EMPTY as u8,
+    CrawlOutEmpty = weap_anim_extra::CRAWL_OUT_EMPTY as u8,
+    CameraMantle = weap_anim_extra::CAMERA_MANTLE as u8,
+    MeleeEmpty = weap_anim_extra::MELEE_EMPTY as u8,
+    MeleeChargeEmpty = weap_anim_extra::MELEE_CHARGE_EMPTY as u8,
+    FireIntro = weap_anim_extra::FIRE_INTRO as u8,
+    AdsFireIntro = weap_anim_extra::ADS_FIRE_INTRO as u8,
 }
 
 impl WeaponAnimSlot {
@@ -108,6 +134,32 @@ impl WeaponAnimSlot {
             weap_anim::ADS_RECHAMBER => Self::AdsRechamber,
             weap_anim::ADS_UP => Self::AdsUp,
             weap_anim::ADS_DOWN => Self::AdsDown,
+            weap_anim_extra::DIVE_IN => Self::DiveIn,
+            weap_anim_extra::DIVE_LOOP => Self::DiveLoop,
+            weap_anim_extra::DIVE_OUT => Self::DiveOut,
+            weap_anim_extra::DIVE_IN_EMPTY => Self::DiveInEmpty,
+            weap_anim_extra::DIVE_LOOP_EMPTY => Self::DiveLoopEmpty,
+            weap_anim_extra::DIVE_OUT_EMPTY => Self::DiveOutEmpty,
+            weap_anim_extra::SPRINT_IN_EMPTY => Self::SprintInEmpty,
+            weap_anim_extra::SPRINT_LOOP_EMPTY => Self::SprintLoopEmpty,
+            weap_anim_extra::SPRINT_OUT_EMPTY => Self::SprintOutEmpty,
+            weap_anim_extra::CRAWL_IN => Self::CrawlIn,
+            weap_anim_extra::CRAWL_FORWARD => Self::CrawlForward,
+            weap_anim_extra::CRAWL_BACK => Self::CrawlBack,
+            weap_anim_extra::CRAWL_RIGHT => Self::CrawlRight,
+            weap_anim_extra::CRAWL_LEFT => Self::CrawlLeft,
+            weap_anim_extra::CRAWL_OUT => Self::CrawlOut,
+            weap_anim_extra::CRAWL_IN_EMPTY => Self::CrawlInEmpty,
+            weap_anim_extra::CRAWL_FORWARD_EMPTY => Self::CrawlForwardEmpty,
+            weap_anim_extra::CRAWL_BACK_EMPTY => Self::CrawlBackEmpty,
+            weap_anim_extra::CRAWL_RIGHT_EMPTY => Self::CrawlRightEmpty,
+            weap_anim_extra::CRAWL_LEFT_EMPTY => Self::CrawlLeftEmpty,
+            weap_anim_extra::CRAWL_OUT_EMPTY => Self::CrawlOutEmpty,
+            weap_anim_extra::CAMERA_MANTLE => Self::CameraMantle,
+            weap_anim_extra::MELEE_EMPTY => Self::MeleeEmpty,
+            weap_anim_extra::MELEE_CHARGE_EMPTY => Self::MeleeChargeEmpty,
+            weap_anim_extra::FIRE_INTRO => Self::FireIntro,
+            weap_anim_extra::ADS_FIRE_INTRO => Self::AdsFireIntro,
             _ => return None,
         })
     }
@@ -118,6 +170,8 @@ pub struct WeaponAnimations {
     pub name: String,
 
     pub fire_time_ms: i32,
+    /// bo2zm: Black Ops II's first-shots fire time (`intro_fire_time_ms`).
+    pub intro_fire_time_ms: i32,
 
     pub melee_time_ms: i32,
 
@@ -151,6 +205,14 @@ pub struct WeaponAnimations {
 
     pub reload_quick_empty_time_ms: i32,
 
+    /// bo2zm: Black Ops II's dive animation times (take-off, in the air,
+    /// touch-down); 0 plays an animation at its own speed.
+    pub dive_times_ms: [i32; 3],
+
+    /// bo2zm: Black Ops II's crawl animation times (in, forward, back,
+    /// right, left, out-fire, out); 0 plays an animation at its own speed.
+    pub crawl_times_ms: [i32; 7],
+
     pub ads_overlay: AdsOverlayConvention,
 
     pub inherits_perks: bool,
@@ -167,6 +229,7 @@ impl std::fmt::Debug for WeaponAnimations {
         f.debug_struct("WeaponAnimations")
             .field("name", &self.name)
             .field("fire_time_ms", &self.fire_time_ms)
+            .field("intro_fire_time_ms", &self.intro_fire_time_ms)
             .field("raise_time_ms", &self.raise_time_ms)
             .field("sprint_loop_time_ms", &self.sprint_loop_time_ms)
             .field("ads_overlay", &self.ads_overlay)
@@ -180,6 +243,7 @@ impl WeaponAnimations {
         Self {
             name: name.into(),
             fire_time_ms: 0,
+            intro_fire_time_ms: 0,
             melee_time_ms: 0,
             melee_charge_time_ms: 0,
             raise_time_ms: 0,
@@ -197,6 +261,8 @@ impl WeaponAnimations {
             reload_end_time_ms: 0,
             reload_quick_time_ms: 0,
             reload_quick_empty_time_ms: 0,
+            dive_times_ms: [0; 3],
+            crawl_times_ms: [0; 7],
             ads_overlay: AdsOverlayConvention::WeightIsFrac,
             inherits_perks: false,
             fire_plays_out: false,
@@ -277,6 +343,7 @@ impl WeaponAnimations {
         Self {
             name,
             fire_time_ms: 0,
+            intro_fire_time_ms: 0,
             melee_time_ms: 0,
             melee_charge_time_ms: 0,
             raise_time_ms: 0,
@@ -294,6 +361,8 @@ impl WeaponAnimations {
             reload_end_time_ms: 0,
             reload_quick_time_ms: 0,
             reload_quick_empty_time_ms: 0,
+            dive_times_ms: [0; 3],
+            crawl_times_ms: [0; 7],
             ads_overlay: AdsOverlayConvention::WeightIsFrac,
             inherits_perks: false,
             fire_plays_out: false,
@@ -305,10 +374,13 @@ impl WeaponAnimations {
 
     fn with_registry_facts(mut self, registry: &WeaponRegistry, index: u32) -> Self {
         if let Some(facts) = registry.facts_of(index) {
+            self.dive_times_ms = facts.dive_times_ms;
+            self.crawl_times_ms = facts.crawl_times_ms;
             self.alternate_raise_time_ms = facts.alternate_raise_time_ms;
             self.alternate_drop_time_ms = facts.alternate_drop_time_ms;
             self.melee_time_ms = facts.melee_time_ms;
             self.melee_charge_time_ms = facts.melee_charge_time_ms;
+            self.intro_fire_time_ms = facts.intro_fire_time_ms;
         }
         let (fire_time_ms, raise_time_ms) = registry.timers_of(index);
         let (drop_time_ms, quick_drop_time_ms, quick_raise_time_ms) =
@@ -363,6 +435,12 @@ impl WeaponAnimations {
 
     pub fn clip_orders(&self) -> &[Option<usize>; WEAPON_ANIM_SLOTS] {
         &self.clip_orders
+    }
+
+    /// A gun built by hand (tests): this clip on this slot.
+    pub fn with_clip(mut self, slot: WeaponAnimSlot, clip: Arc<AnimClip>) -> Self {
+        self.clips[slot.index()] = Some(clip);
+        self
     }
 
     pub fn clip_at(&self, index: usize) -> Option<&Arc<AnimClip>> {

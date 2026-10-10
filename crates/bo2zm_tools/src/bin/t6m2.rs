@@ -140,6 +140,25 @@ fn weapons_report(
                 println!("sound {name}.{field} = '{}'", w.def_string(off));
             }
         }
+        // T6M2_FIRE=1: each weapon's fire timing, with its first-shots (intro) fire; the spin fields are
+        // engine defaults on every gun.
+        if std::env::var_os("T6M2_FIRE").is_some() {
+            println!(
+                "fire {name}: introFire {} x{} fireType {} fireTime {} lastFireTime {} fireDelay {} spinUp {} spinDown {} spinRate {} holdFire {} burstDelay {} rechamber {}",
+                w.def_i32(d::iIntroFireTime),
+                w.def_i32(d::iIntroFireLength),
+                w.def_i32(d::fireType),
+                w.def_i32(d::iFireTime),
+                w.def_i32(d::iLastFireTime),
+                w.def_i32(d::iFireDelay),
+                w.def_i32(d::iSpinUpTime),
+                w.def_i32(d::iSpinDownTime),
+                w.def_f32(d::spinRate),
+                w.def_i32(d::iHoldFireTime),
+                w.def_i32(d::iBurstDelayTime),
+                w.def_i32(d::iRechamberTime),
+            );
+        }
         // T6M2_TRACERS=1: each weapon's tracer.
         if std::env::var_os("T6M2_TRACERS").is_some() && name.ends_with("_zm") {
             println!(

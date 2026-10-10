@@ -21,6 +21,7 @@ use crate::world::ClientId;
 mod craft;
 mod ride;
 mod turret;
+mod view_link;
 
 /// Scorestreak state the engine keeps for the scripts.
 #[derive(Resource, Default)]
@@ -46,6 +47,9 @@ pub(crate) struct Streaks {
     pub turrets: BTreeMap<u32, turret::Turret>,
     /// Players riding or driving a vehicle (`usevehicle`), by client.
     pub rides: BTreeMap<u32, ride::Ride>,
+    /// Players whose view sits on an entity's tag
+    /// (`playerlinkweaponviewtodelta`: the Lodestar), by client.
+    pub view_links: BTreeMap<u32, view_link::ViewLink>,
     /// Lock-on targets of missiles (`missile_settarget`): missile ent ->
     /// target ent.
     pub homing: BTreeMap<u32, u32>,
@@ -296,7 +300,6 @@ pub(super) fn bind(vm: &mut Vm<World>) {
     for name in [
         "setdrawinfrared",
         "setforcenocull",
-        "setinfraredvision",
         "mayapplyscreeneffect",
     ] {
         vm.bind(name, true, |_, _, _, _| Ok(Value::Undefined));
@@ -311,6 +314,16 @@ pub(super) fn bind(vm: &mut Vm<World>) {
         let on = arg(a, 0).as_float().unwrap_or(0.0) != 0.0;
         streaks(world).server_vision.entry(id.0).or_default().0 = on;
         publish_vision(world, id.0);
+        Ok(Value::Undefined)
+    });
+    // His vehicle screen's infrared (`setinfraredvision`: the Lodestar and
+    // the VTOL Warship turn it on when he rides, off on his enhanced view
+    // and when he leaves): BO2's HUD lights its FLIR box while it is on,
+    // OPT while it is off (`bo2mp_infrared`).
+    m!("setinfraredvision", |vm, world, s, a| {
+        let id = super::client(vm, world, s)?;
+        let on = arg(a, 0).as_float().unwrap_or(0.0) != 0.0;
+        super::set_client_dvar(world, id.0, "bo2mp_infrared", if on { "1" } else { "" });
         Ok(Value::Undefined)
     });
     m!("setvisionsetforplayer", |vm, world, s, a| {
@@ -625,9 +638,13 @@ pub(super) fn bind(vm: &mut Vm<World>) {
         Ok(Value::Vec3([o[0], o[1], o[2] + 32.0]))
     });
     // A body's eye (`geteye` on an actor: a dog's head tracks its enemy
-    // from it): a player's own, else a dog's head height over it.
+    // from it): a player's own (on the Lodestar's drone while his view
+    // rides it), else a dog's head height over it.
     m!("geteye", |vm, world, s, _| {
         if let Ok(id) = super::client(vm, world, s) {
+            if let Some(eye) = view_link::eye(world, id.0) {
+                return Ok(Value::Vec3(eye));
+            }
             let f = frame(world);
             let (o, h) = f
                 .player(id)
@@ -841,6 +858,7 @@ pub(super) fn bind(vm: &mut Vm<World>) {
     craft::bind(vm);
     turret::bind(vm);
     ride::bind(vm);
+    view_link::bind(vm);
 }
 
 /// The minimap's frame from BO2's own _compass (`setminimap(material,
@@ -1058,6 +1076,7 @@ pub(super) fn advance(world: &mut World) {
     falling(world);
     use_models(world);
     ride::advance(world);
+    view_link::advance(world);
     missile_hud_end(world);
     craft::advance(world);
     turret::advance(world);

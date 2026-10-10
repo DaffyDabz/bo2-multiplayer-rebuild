@@ -500,7 +500,38 @@ pub fn is_weapon_inactive(ps: &PlayerState, mantle_enable: bool) -> bool {
     if (ps.pm_flags & pm_flags::MANTLE) == 0 {
         return false;
     }
+    if (ps.mantle_flags & playerstate_iw4::mantle_flags::BO2) != 0 {
+        return (ps.mantle_flags & playerstate_iw4::mantle_flags::BO2_WEAPON_UP) == 0;
+    }
     trans_over_anim(ps.mantle_trans_index) != 10
+}
+
+/// bo2zm: Black Ops II's climbing gun, marked as a climb starts. A climb
+/// whose table height is at most `mantle_weapon_height` keeps the gun in
+/// hand; one higher than `mantle_weapon_anim_height` also plays the gun's
+/// climb camera animation. The climb's length rides along for the client.
+pub fn mark_bo2_weapon(
+    ps: &mut PlayerState,
+    feel: crate::Bo2Feel,
+    lengths: &impl MantleXAnimLength,
+) {
+    use playerstate_iw4::mantle_flags::{BO2, BO2_DURATION_SHIFT, BO2_WEAPON_ANIM, BO2_WEAPON_UP};
+    if !feel.on {
+        return;
+    }
+    let height = MANTLE_TRANS_HEIGHTS[trans_row(ps.mantle_trans_index)];
+    let mut flags = BO2;
+    if height <= feel.mantle_weapon_height {
+        flags |= BO2_WEAPON_UP;
+        if height > feel.mantle_weapon_anim_height {
+            flags |= BO2_WEAPON_ANIM;
+        }
+    }
+    let ms = duration(ps, lengths).clamp(0, 0xffff) as u32;
+    let kept = ps.mantle_flags
+        & ((1 << BO2_DURATION_SHIFT) - 1)
+        & !(BO2 | BO2_WEAPON_UP | BO2_WEAPON_ANIM);
+    ps.mantle_flags = kept | flags | (ms << BO2_DURATION_SHIFT);
 }
 
 #[must_use]
@@ -536,7 +567,7 @@ pub fn enter(
     ps.mantle_trans_index = find_transition(results.start_pos[2], results.ledge_pos[2]);
     ps.mantle_flags = results.flags & !0x20;
 
-    if (ps.perks[0] & 0x8_0000) != 0 {
+    if (ps.perks[0] & PERK_FASTMANTLE) != 0 {
         ps.mantle_flags |= playerstate_iw4::mantle_flags::FAST_MANTLE;
     }
     let duration = duration(ps, lengths);
@@ -550,6 +581,9 @@ pub fn enter(
     add_predictable_event(ps, EV_MANTLE, 0);
     ps.e_flags |= EF_MANTLE;
 }
+
+/// The fast-climb perk (specialty_fastmantle).
+pub const PERK_FASTMANTLE: u32 = 0x8_0000;
 
 pub const MANTLE_VIEW_YAWCAP_DEFAULT: f32 = 60.0;
 
@@ -872,4 +906,73 @@ pub fn check(
     start_clearance(ps, &mut results, tracemask, tracer);
     enter(ps, &results, lengths, root);
     true
+}
+
+#[cfg(test)]
+mod bo2_weapon_tests {
+    use super::*;
+    use playerstate_iw4::mantle_flags::{self, BO2, BO2_WEAPON_ANIM, BO2_WEAPON_UP};
+
+    const BO2_FEEL: crate::Bo2Feel = crate::Bo2Feel {
+        on: true,
+        mantle_weapon_height: 39.0,
+        mantle_weapon_anim_height: 32.0,
+        ..crate::Bo2Feel::IW4
+    };
+
+    fn climbing(trans_index: i32) -> PlayerState {
+        let mut ps = PlayerState::ZERO;
+        ps.pm_flags |= pm_flags::MANTLE;
+        ps.mantle_trans_index = trans_index;
+        ps
+    }
+
+    #[test]
+    fn low_climbs_keep_the_gun_and_high_ones_lower_it() {
+        let lengths = FlatMantleAnimLength::default();
+        // Table heights 57, 51, 45, 39, 33, 27, 21.
+        let expect = [
+            (0, false, false),
+            (2, false, false),
+            (3, true, true),
+            (4, true, true),
+            (5, true, false),
+            (6, true, false),
+        ];
+        for (row, up, anim) in expect {
+            let mut ps = climbing(row);
+            mark_bo2_weapon(&mut ps, BO2_FEEL, &lengths);
+            assert_ne!(ps.mantle_flags & BO2, 0, "row {row}");
+            assert_eq!(ps.mantle_flags & BO2_WEAPON_UP != 0, up, "row {row}");
+            assert_eq!(ps.mantle_flags & BO2_WEAPON_ANIM != 0, anim, "row {row}");
+            assert_eq!(is_weapon_inactive(&ps, true), !up, "row {row}");
+            assert_eq!(mantle_flags::bo2_weapon_up(&ps), up, "row {row}");
+        }
+    }
+
+    #[test]
+    fn the_climb_length_rides_along_and_progress_counts_up() {
+        let lengths = FlatMantleAnimLength::default();
+        let mut ps = climbing(4);
+        ps.mantle_flags |= mantle_flags::OVER;
+        mark_bo2_weapon(&mut ps, BO2_FEEL, &lengths);
+        assert_ne!(ps.mantle_flags & mantle_flags::OVER, 0);
+        assert_eq!(mantle_flags::bo2_duration_ms(ps.mantle_flags), 600);
+        ps.mantle_timer = 150;
+        assert_eq!(mantle_flags::bo2_progress(&ps), Some(0.25));
+        ps.pm_flags &= !pm_flags::MANTLE;
+        assert_eq!(mantle_flags::bo2_progress(&ps), None);
+        assert!(!mantle_flags::bo2_weapon_up(&ps));
+    }
+
+    #[test]
+    fn iw4_climbs_are_untouched() {
+        let lengths = FlatMantleAnimLength::default();
+        let mut ps = climbing(6);
+        mark_bo2_weapon(&mut ps, crate::Bo2Feel::IW4, &lengths);
+        assert_eq!(ps.mantle_flags, 0);
+        // IW4 rule: only the lowest over-animation keeps the gun.
+        assert!(!is_weapon_inactive(&ps, true));
+        assert!(is_weapon_inactive(&climbing(4), true));
+    }
 }

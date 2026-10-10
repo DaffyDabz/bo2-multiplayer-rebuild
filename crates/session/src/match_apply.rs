@@ -297,6 +297,11 @@ pub fn apply_prepared_match(
                 &facts.t6_anim_speeds,
             ),
         );
+        // bo2mp: how a dead body goes limp (ragdoll definition 0).
+        stage_resource(
+            &mut install,
+            sim::t6_ragdoll::T6RagdollRes::from_text(facts.t6_ragdoll.as_deref()),
+        );
         stage_resource(&mut install, assets::PreparedLocalizedStrings(strings));
         stage_resource(&mut install, fx_catalog);
         stage_resource(&mut install, type10);
@@ -351,13 +356,43 @@ pub fn apply_prepared_match(
                 },
             ))
         }));
-        content.set_mantle_xanims(sim::MantleXAnimBind::from_clips(|fast, i| {
+        let iw4_mantle_clip = |fast: bool, i: usize| {
             let name = sim::MantleXAnimBind::clip_name(fast, i)?;
             xanims
                 .0
                 .clip(asset_core::AssetNamespace::Iw4, name)
                 .map(|clip| (*clip).clone())
-        }));
+        };
+        let mantle = if anim_namespace == asset_core::AssetNamespace::T6 {
+            // Black Ops II climbs with its own clips; MW2's fill only a gap.
+            let mut bo2 = 0usize;
+            let bind = sim::MantleXAnimBind::from_t6_clips(
+                |i| {
+                    let t6 = sim::MantleXAnimBind::clip_name_t6(i).and_then(|name| {
+                        xanims
+                            .0
+                            .clip_with_root_motion(asset_core::AssetNamespace::T6, name)
+                    });
+                    match t6 {
+                        Some(clip) => {
+                            bo2 += 1;
+                            Some(clip)
+                        }
+                        None => iw4_mantle_clip(false, i),
+                    }
+                },
+                sim::PERK_MANTLE_REDUCTION_DEFAULT,
+            );
+            diag::info!(
+                World,
+                "mantle: {bo2} of {} Black Ops II climb animations",
+                sim::MANTLE_XANIM_NAMES_T6.len()
+            );
+            bind
+        } else {
+            sim::MantleXAnimBind::from_clips(iw4_mantle_clip)
+        };
+        content.set_mantle_xanims(mantle);
         content.set_weapon_script_names(weapons.0.script_names_table());
         content.set_weapon_script_aliases(objective_weapons);
         content.set_vehicle_turrets(weapons.0.vehicle_turrets());
@@ -1033,6 +1068,7 @@ fn preflight_match_install(
             })
             .collect(),
         playeranim: sim::t6_playeranim::T6PlayerAnimsRes::from_text(set.playeranim.as_ref(), &[]).0,
+        destructibles: set.destructibles.clone(),
         // The AI's animations, and the players' (bo2mp: their hit boxes
         // are posed on the server).
         clips: set

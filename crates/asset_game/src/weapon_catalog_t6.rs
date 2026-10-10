@@ -13,15 +13,18 @@ use super::*;
 
 /// T6 `weapAnimFiles_t` slot -> the catalog's slot (IW4 numbering plus the
 /// quick-reload extras). Slots IW4 has no use for are left out.
-const T6_ANIM_SLOTS: [(usize, usize); 33] = [
+const T6_ANIM_SLOTS: [(usize, usize); 59] = [
     (0x01, weap_anim::IDLE),
     (0x02, weap_anim::EMPTY_IDLE),
+    (0x03, weap_anim_extra::FIRE_INTRO),
     (0x04, weap_anim::FIRE),
     (0x05, weap_anim::HOLD_FIRE),
     (0x06, weap_anim::LASTSHOT),
     (0x08, weap_anim::RECHAMBER),
     (0x09, weap_anim::MELEE),
+    (0x0D, weap_anim_extra::MELEE_EMPTY),
     (0x0E, weap_anim::MELEE_CHARGE),
+    (0x0F, weap_anim_extra::MELEE_CHARGE_EMPTY),
     (0x10, weap_anim::RELOAD),
     (0x12, weap_anim::RELOAD_EMPTY),
     (0x13, weap_anim::RELOAD_START),
@@ -40,12 +43,35 @@ const T6_ANIM_SLOTS: [(usize, usize); 33] = [
     (0x20, weap_anim::SPRINT_IN),
     (0x21, weap_anim::SPRINT_LOOP),
     (0x22, weap_anim::SPRINT_OUT),
+    (0x23, weap_anim_extra::SPRINT_IN_EMPTY),
+    (0x24, weap_anim_extra::SPRINT_LOOP_EMPTY),
+    (0x25, weap_anim_extra::SPRINT_OUT_EMPTY),
+    (0x2C, weap_anim_extra::CRAWL_IN),
+    (0x2D, weap_anim_extra::CRAWL_FORWARD),
+    (0x2E, weap_anim_extra::CRAWL_BACK),
+    (0x2F, weap_anim_extra::CRAWL_RIGHT),
+    (0x30, weap_anim_extra::CRAWL_LEFT),
+    (0x31, weap_anim_extra::CRAWL_OUT),
+    (0x32, weap_anim_extra::CRAWL_IN_EMPTY),
+    (0x33, weap_anim_extra::CRAWL_FORWARD_EMPTY),
+    (0x34, weap_anim_extra::CRAWL_BACK_EMPTY),
+    (0x35, weap_anim_extra::CRAWL_RIGHT_EMPTY),
+    (0x36, weap_anim_extra::CRAWL_LEFT_EMPTY),
+    (0x37, weap_anim_extra::CRAWL_OUT_EMPTY),
     (0x3A, weap_anim::DETONATE),
     (0x3B, weap_anim::NIGHTVISION_WEAR),
     (0x3C, weap_anim::NIGHTVISION_REMOVE),
     (0x3D, weap_anim::ADS_FIRE),
     (0x3E, weap_anim::ADS_LASTSHOT),
+    (0x3F, weap_anim_extra::ADS_FIRE_INTRO),
     (0x40, weap_anim::ADS_RECHAMBER),
+    (0x41, weap_anim_extra::DIVE_IN),
+    (0x42, weap_anim_extra::DIVE_LOOP),
+    (0x43, weap_anim_extra::DIVE_OUT),
+    (0x44, weap_anim_extra::DIVE_IN_EMPTY),
+    (0x45, weap_anim_extra::DIVE_LOOP_EMPTY),
+    (0x46, weap_anim_extra::DIVE_OUT_EMPTY),
+    (0x4D, weap_anim_extra::CAMERA_MANTLE),
     (0x55, weap_anim::ADS_UP),
 ];
 
@@ -62,6 +88,31 @@ fn remap_t6_sz_xanims(t6: &[String]) -> [Option<String>; WEAPON_ANIM_SLOTS] {
     // ADS down (0x56) has no IW4 slot of its own beside ADS up's pair.
     if let Some(name) = t6.get(0x56).filter(|n| !n.is_empty()) {
         out[weap_anim::ADS_DOWN] = Some(name.to_ascii_lowercase());
+    }
+    // A gun without empty-magazine dive, sprint, crawl or melee animations
+    // (the M14 has no empty dive) plays its full ones; one without a
+    // first-shots fire plays its fire.
+    for (empty, full) in [
+        (weap_anim_extra::DIVE_IN_EMPTY, weap_anim_extra::DIVE_IN),
+        (weap_anim_extra::DIVE_LOOP_EMPTY, weap_anim_extra::DIVE_LOOP),
+        (weap_anim_extra::DIVE_OUT_EMPTY, weap_anim_extra::DIVE_OUT),
+        (weap_anim_extra::SPRINT_IN_EMPTY, weap_anim::SPRINT_IN),
+        (weap_anim_extra::SPRINT_LOOP_EMPTY, weap_anim::SPRINT_LOOP),
+        (weap_anim_extra::SPRINT_OUT_EMPTY, weap_anim::SPRINT_OUT),
+        (weap_anim_extra::CRAWL_IN_EMPTY, weap_anim_extra::CRAWL_IN),
+        (weap_anim_extra::CRAWL_FORWARD_EMPTY, weap_anim_extra::CRAWL_FORWARD),
+        (weap_anim_extra::CRAWL_BACK_EMPTY, weap_anim_extra::CRAWL_BACK),
+        (weap_anim_extra::CRAWL_RIGHT_EMPTY, weap_anim_extra::CRAWL_RIGHT),
+        (weap_anim_extra::CRAWL_LEFT_EMPTY, weap_anim_extra::CRAWL_LEFT),
+        (weap_anim_extra::CRAWL_OUT_EMPTY, weap_anim_extra::CRAWL_OUT),
+        (weap_anim_extra::MELEE_EMPTY, weap_anim::MELEE),
+        (weap_anim_extra::MELEE_CHARGE_EMPTY, weap_anim::MELEE_CHARGE),
+        (weap_anim_extra::FIRE_INTRO, weap_anim::FIRE),
+        (weap_anim_extra::ADS_FIRE_INTRO, weap_anim::ADS_FIRE),
+    ] {
+        if out[empty].is_none() {
+            out[empty] = out[full].clone();
+        }
     }
     out
 }
@@ -183,6 +234,8 @@ fn t6_body_facts(w: &asset_t6::WeaponRef) -> WeaponBodyFacts {
         return f;
     }
     f.fire_time_ms = w.def_i32(d::iFireTime);
+    f.intro_fire_time_ms = w.def_i32(d::iIntroFireTime);
+    f.intro_fire_length = w.def_i32(d::iIntroFireLength);
     f.impact_type = w.def_i32(d::impactType);
     f.raise_time_ms = w.def_i32(d::iRaiseTime);
     f.drop_time_ms = w.def_i32(d::iDropTime);
@@ -251,6 +304,8 @@ fn t6_body_facts(w: &asset_t6::WeaponRef) -> WeaponBodyFacts {
         prone_move_min_speed: w.def_f32(d::fProneMoveMinSpeed),
         pos_rot_rate: w.def_f32(d::fPosRotRate),
         pos_prone_rot_rate: w.def_f32(d::fPosProneRotRate),
+        mantle_ofs: w.def_vec3(d::vMantleOfs),
+        mantle_rot: w.def_vec3(d::vMantleRot),
         ..WeaponMovementOfsInputs::default()
     };
     f.idle = WeaponIdleInputs {
@@ -310,6 +365,17 @@ fn t6_body_facts(w: &asset_t6::WeaponRef) -> WeaponBodyFacts {
     f.sprint_raise_time_ms = w.def_i32(d::sprintInTime);
     f.sprint_loop_time_ms = w.def_i32(d::sprintLoopTime);
     f.sprint_drop_time_ms = w.def_i32(d::sprintOutTime);
+    f.dive_times_ms = [d::dtpInTime, d::dtpLoopTime, d::dtpOutTime].map(|o| w.def_i32(o));
+    f.crawl_times_ms = [
+        d::crawlInTime,
+        d::crawlForwardTime,
+        d::crawlBackTime,
+        d::crawlRightTime,
+        d::crawlLeftTime,
+        d::crawlOutFireTime,
+        d::crawlOutTime,
+    ]
+    .map(|o| w.def_i32(o));
     f.fuse_time_ms = w.def_i32(d::fuseTime);
     f.auto_aim_range = w.def_f32(d::autoAimRange);
     f.aim_assist_range = w.def_f32(d::aimAssistRange);
@@ -860,6 +926,40 @@ mod tests {
         assert_eq!(out[weap_anim::RELOAD].as_deref(), Some("reload"));
         assert_eq!(out[weap_anim::ADS_UP].as_deref(), Some("ads_up"));
         assert_eq!(out[weap_anim::ADS_DOWN].as_deref(), Some("ads_down"));
+    }
+
+    #[test]
+    fn t6_empty_melee_lands_and_falls_back_to_the_full_one() {
+        let mut t6 = vec![String::new(); 88];
+        t6[0x09] = "viewmodel_fn57_tactical_melee".into();
+        t6[0x0D] = "viewmodel_fn57_tactical_melee_empty".into();
+        t6[0x0E] = "viewmodel_fn57_tactical_melee".into();
+        let out = remap_t6_sz_xanims(&t6);
+        assert_eq!(
+            out[weap_anim_extra::MELEE_EMPTY].as_deref(),
+            Some("viewmodel_fn57_tactical_melee_empty")
+        );
+        assert_eq!(
+            out[weap_anim_extra::MELEE_CHARGE_EMPTY].as_deref(),
+            Some("viewmodel_fn57_tactical_melee")
+        );
+    }
+
+    #[test]
+    fn t6_first_shots_fire_lands_and_falls_back_to_the_fire() {
+        let mut t6 = vec![String::new(); 88];
+        t6[0x03] = "viewmodel_hamr_fire".into();
+        t6[0x04] = "viewmodel_hamr_secondary_fire".into();
+        t6[0x3D] = "viewmodel_hamr_ads_secondary_fire".into();
+        let out = remap_t6_sz_xanims(&t6);
+        assert_eq!(
+            out[weap_anim_extra::FIRE_INTRO].as_deref(),
+            Some("viewmodel_hamr_fire")
+        );
+        assert_eq!(
+            out[weap_anim_extra::ADS_FIRE_INTRO].as_deref(),
+            Some("viewmodel_hamr_ads_secondary_fire")
+        );
     }
 
     #[test]

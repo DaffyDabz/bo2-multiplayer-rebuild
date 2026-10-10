@@ -1084,6 +1084,7 @@ impl ZoneLane for T6Lane {
                     t6_hud_fonts: combat.hud_fonts,
                     t6_ui: combat.ui,
                     t6_playeranim: combat.scripts.playeranim.clone(),
+                    t6_ragdoll: combat.scripts.ragdoll.clone(),
                     t6_anim_speeds: combat
                         .scripts
                         .anims

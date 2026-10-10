@@ -9,6 +9,7 @@ use crate::anim::fpv::{
 use crate::anim::fpv_pose::{FpvBoltFrame, PosedClip};
 use crate::anim::fpv_prepared::FpvRigSet;
 use crate::anim::fpv_rig::{FpvHandPose, PreparedFpvRig};
+use asset_game::WeaponAnimSlot;
 use assets::FpvMeshIndex;
 
 #[derive(Resource, Default)]
@@ -120,6 +121,9 @@ pub struct FpvGenerateArgs<'a> {
     pub predicted_fire: bool,
     pub dual: bool,
     pub dual_offset: Option<f32>,
+    /// bo2zm: how far through a low climb that plays the gun's climb camera
+    /// animation (0 to 1), else `None`.
+    pub mantle_camera: Option<f32>,
 }
 
 pub fn generate_fpv_pose(args: FpvGenerateArgs<'_>) -> FpvPoseKind {
@@ -136,6 +140,7 @@ pub fn generate_fpv_pose(args: FpvGenerateArgs<'_>) -> FpvPoseKind {
         predicted_fire,
         dual,
         dual_offset,
+        mantle_camera,
     } = args;
     let (_pose, notifies) =
         tick_equipped_fpv_with_predicted_fire(equipped, cursor, sample, predicted_fire, dt);
@@ -166,6 +171,18 @@ pub fn generate_fpv_pose(args: FpvGenerateArgs<'_>) -> FpvPoseKind {
         _ => Vec::new(),
     };
     let dual_drawn = !left.is_empty();
+    let camera = mantle_camera.and_then(|frac| {
+        let clip = equipped
+            .controller
+            .weapon()
+            .clip(WeaponAnimSlot::CameraMantle)?;
+        Some(PosedClip {
+            node: WeaponAnimSlot::CameraMantle.index(),
+            clip,
+            time: frac.clamp(0.0, 1.0) * clip.duration(),
+            weight: 1.0,
+        })
+    });
 
     let Some(prepared) = rigs.pick(rocket, dual_drawn, melee, ads) else {
         *active = None;
@@ -182,7 +199,7 @@ pub fn generate_fpv_pose(args: FpvGenerateArgs<'_>) -> FpvPoseKind {
 
     // bo2zm: Black Ops II dual wield: both hands' clips on the one rig.
     if rigs.combined && dual_drawn {
-        let Some(pose) = prepared.pose_combined(&right, &left) else {
+        let Some(pose) = prepared.pose_combined(&right, &left, camera.as_ref()) else {
             return FpvPoseKind::Refuse(FpvPoseRefuse::EyePoseFailed {
                 gun_xmodel: equipped.gun_xmodel.clone(),
             });
@@ -195,7 +212,7 @@ pub fn generate_fpv_pose(args: FpvGenerateArgs<'_>) -> FpvPoseKind {
             notetracks: notifies,
         });
     }
-    let Some(right_pose) = prepared.pose_hand(0, &right, Vec3::ZERO) else {
+    let Some(right_pose) = prepared.pose_hand(0, &right, Vec3::ZERO, camera.as_ref()) else {
         return FpvPoseKind::Refuse(FpvPoseRefuse::EyePoseFailed {
             gun_xmodel: equipped.gun_xmodel.clone(),
         });
@@ -214,7 +231,7 @@ pub fn generate_fpv_pose(args: FpvGenerateArgs<'_>) -> FpvPoseKind {
             .unwrap_or(Vec3::ZERO);
         // The rig laid out a left hand, so a left hand that cannot be posed is
         // a plan with a hole in it. Refusing the frame is the honest answer.
-        let Some(pose) = prepared.pose_hand(1, &left, offset) else {
+        let Some(pose) = prepared.pose_hand(1, &left, offset, None) else {
             return FpvPoseKind::Refuse(FpvPoseRefuse::EyePoseFailed {
                 gun_xmodel: equipped.gun_xmodel.clone(),
             });

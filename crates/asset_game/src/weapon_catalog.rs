@@ -29,6 +29,10 @@ pub struct WeaponBodyFacts {
     pub body_resolved: bool,
 
     pub fire_time_ms: i32,
+    /// bo2zm: Black Ops II's faster first shots of a trigger pull
+    /// (`iIntroFireTime` apart, `iIntroFireLength` of them).
+    pub intro_fire_time_ms: i32,
+    pub intro_fire_length: i32,
 
     pub impact_type: i32,
 
@@ -245,6 +249,14 @@ pub struct WeaponBodyFacts {
     pub sprint_loop_time_ms: i32,
 
     pub sprint_drop_time_ms: i32,
+
+    /// bo2zm: Black Ops II's dive-to-prone animation times (`dtpInTime`,
+    /// `dtpLoopTime`, `dtpOutTime`: take-off, in the air, touch-down).
+    pub dive_times_ms: [i32; 3],
+    /// bo2zm: Black Ops II's crawl animation times (`crawlInTime`,
+    /// `crawlForwardTime`, `crawlBackTime`, `crawlRightTime`,
+    /// `crawlLeftTime`, `crawlOutFireTime`, `crawlOutTime`).
+    pub crawl_times_ms: [i32; 7],
     pub fuse_time_ms: i32,
 
     pub auto_aim_range: f32,
@@ -1659,6 +1671,8 @@ impl WeaponCatalog {
             facts: WeaponBodyFacts {
                 body_resolved: geometry.weap_def.is_some(),
                 fire_time_ms: geometry.fire_time_ms,
+                intro_fire_time_ms: 0,
+                intro_fire_length: 0,
                 impact_type: geometry.impact_type,
                 raise_time_ms: geometry.raise_time_ms,
                 drop_time_ms: geometry.drop_time_ms,
@@ -1767,6 +1781,8 @@ impl WeaponCatalog {
                 sprint_raise_time_ms: geometry.sprint_raise_time_ms,
                 sprint_loop_time_ms: geometry.sprint_loop_time_ms,
                 sprint_drop_time_ms: geometry.sprint_drop_time_ms,
+                dive_times_ms: [0; 3],
+                crawl_times_ms: [0; 7],
                 fuse_time_ms: geometry.fuse_time_ms,
                 auto_aim_range: geometry.auto_aim_range,
                 aim_assist_range: geometry.aim_assist_range,
@@ -4629,6 +4645,7 @@ fn movement_from_capture(c: WeaponMovementOfsCapture) -> WeaponMovementOfsInputs
         prone_move_min_speed: c.prone_move_min_speed,
         pos_rot_rate: c.pos_rot_rate,
         pos_prone_rot_rate: c.pos_prone_rot_rate,
+        ..WeaponMovementOfsInputs::default()
     }
 }
 
@@ -4800,6 +4817,12 @@ fn merge_body_facts(dst: &mut WeaponBodyFacts, src: WeaponBodyFacts) {
     }
     if dst.sprint_drop_time_ms == 0 {
         dst.sprint_drop_time_ms = src.sprint_drop_time_ms;
+    }
+    if dst.dive_times_ms == [0; 3] {
+        dst.dive_times_ms = src.dive_times_ms;
+    }
+    if dst.crawl_times_ms == [0; 7] {
+        dst.crawl_times_ms = src.crawl_times_ms;
     }
     if dst.hold_fire_time_ms == 0 {
         dst.hold_fire_time_ms = src.hold_fire_time_ms;

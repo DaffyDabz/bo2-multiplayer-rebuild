@@ -87,7 +87,12 @@ pub fn is_predicted_fire_weap_anim(masked: u32) -> bool {
     use weapon_iw4::weap_anim_event as event_id;
     matches!(
         masked,
-        event_id::FIRE | event_id::LASTSHOT | event_id::ADS_FIRE | event_id::ADS_LASTSHOT
+        event_id::FIRE
+            | event_id::LASTSHOT
+            | event_id::ADS_FIRE
+            | event_id::ADS_LASTSHOT
+            | event_id::FIRE_INTRO
+            | event_id::ADS_FIRE_INTRO
     )
 }
 

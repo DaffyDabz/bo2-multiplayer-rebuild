@@ -38,6 +38,7 @@ impl Plugin for UiPlugin {
         register_gap_hud_systems(app);
         crate::zm_hud::register_zm_hud_systems(app);
         crate::scope_hint::register(app);
+        crate::overhead_names::register(app);
         crate::lui_hud::register_lui_hud_systems(app);
         crate::bo2mp_damage::register_bo2mp_damage(app);
         crate::menu_load::register_menu_load_systems(app);

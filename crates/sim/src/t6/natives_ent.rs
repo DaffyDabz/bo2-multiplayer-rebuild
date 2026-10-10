@@ -136,6 +136,8 @@ pub(super) fn spawn_map_entities(vm: &mut Vm<World>, world: &mut World, texts: &
                     }
                     "radius" => ent.radius = v.trim().parse().unwrap_or(0.0),
                     "height" => ent.height = v.trim().parse().unwrap_or(0.0),
+                    // bo2mp: breaks piece by piece (t6/destructible.rs).
+                    "destructibledef" => ent.destructible = Some(v.trim().to_ascii_lowercase()),
                     _ => {}
                 }
                 let val = typed(vm, &key, v, true);

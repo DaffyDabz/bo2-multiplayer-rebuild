@@ -37,6 +37,13 @@ pub struct T6ScriptSet {
     /// bo2mp: the third-person player animation script and its anim type
     /// list (`mp/playeranim.script`, `mp/playeranimtypes.txt`).
     pub playeranim: Option<(String, String)>,
+    /// bo2mp: the zones' destructible definitions (the mannequins, cars,
+    /// clock that break piece by piece when shot), later zones replacing
+    /// earlier.
+    pub destructibles: Vec<std::sync::Arc<xmodel_runtime::T5DestructibleDef>>,
+    /// bo2mp: the ragdoll definitions (`ragdoll.cfg`), how a dead body
+    /// goes limp.
+    pub ragdoll: Option<String>,
 }
 
 /// bo2zm M3: what the server needs of an animation.

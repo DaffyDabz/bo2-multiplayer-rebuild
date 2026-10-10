@@ -688,6 +688,12 @@ pub(super) fn bind(vm: &mut Vm<World>) {
                 &hitloc,
             );
         } else if let Some(o) = s.as_obj() {
+            // bo2mp: a map's breakable breaks by it (a burning car's fire
+            // running out).
+            let who = entnum(vm, &attacker)
+                .filter(|p| world.resource::<Zm>().players.contains_key(p))
+                .map(ClientId);
+            super::destructible::script_damage(world, n, amount, &means, who, &weapon);
             let m = vm.string(&means);
             vm.notify_str(
                 world,

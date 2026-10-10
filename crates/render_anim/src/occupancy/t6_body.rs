@@ -33,6 +33,7 @@ use sim::t6_playeranim::{
 };
 
 use crate::occupancy::missile::{PosedVerts, T6MissileModel, skin_verts};
+use crate::occupancy::ragdoll::{Ragdoll, joint_points};
 
 /// This frame's BO2 player bodies, corpses and ground items, for the
 /// fallback pass.
@@ -338,6 +339,12 @@ struct BodyLocals {
     /// When each ground item was first seen (its tip onto its side).
     item_seen: HashMap<i32, i32>,
     logged: Vec<String>,
+    /// Each corpse gone limp: its ragdoll (none when its skeleton lacks a
+    /// joint the ragdoll names) and whether it was thrown.
+    limp: HashMap<u16, (Option<Ragdoll>, bool)>,
+    /// Each corpse's ragdoll joints last frame and when, while its death
+    /// animation still plays (the speed it goes limp at).
+    joints_before: HashMap<u16, (Vec<Vec3>, i32)>,
 }
 
 /// A weapon's shape on the ground: its world model and attachments placed
@@ -571,7 +578,7 @@ fn upper_body(dobj: &xmodel_runtime::DObj) -> anim_iw4::PartBits {
 /// The surface under a point (BO2's surface flags), by the clip.
 fn surface_under(clip: Option<&asset_world::ClipCollision>, at: [f32; 3]) -> u32 {
     let Some(clip) = clip else { return 0 };
-    let hit = clip.sweep_box([at[0], at[1], at[2] + 8.0], [at[0], at[1], at[2] - 64.0], [0.0; 3], [0.0; 3], 1);
+    let hit = clip.sweep_box([at[0], at[1], at[2] + 8.0], [at[0], at[1], at[2] - 64.0], [0.0; 3], [0.0; 3], super::ragdoll::MASK_PHYS_WORLD);
     if hit.startsolid || hit.fraction >= 1.0 { 0 } else { hit.surface_flags }
 }
 
@@ -680,7 +687,7 @@ fn fit_to_ground(
     clip: &asset_world::ClipCollision,
     lying: f32,
 ) -> Option<GroundFit> {
-    const SOLID: u32 = 1;
+    const SOLID: u32 = super::ragdoll::MASK_PHYS_WORLD;
     let bone = |name: &str| dobj.find(name).and_then(|i| world.get(i)).map(|m| m.w_axis.truncate());
     let (pelvis, head) = (bone("pelvis")?, bone("j_head")?);
     let mut keys = vec![pelvis, head];
@@ -870,7 +877,10 @@ fn collect_t6_bodies(
     local: Option<Res<LocalPresentClient>>,
     subject: Option<Res<ViewSubject>>,
     cg_clock: Option<Res<FrameClock>>,
-    clip: Option<Res<crate::occupancy::DynEntPhysClip>>,
+    (clip, ragdoll_def): (
+        Option<Res<crate::occupancy::DynEntPhysClip>>,
+        Option<Res<sim::t6_ragdoll::T6RagdollRes>>,
+    ),
     mut shapes: ResMut<T6ItemShapes>,
     ents: Query<(Entity, &CEntity, &CEntityRuntime)>,
     mut out: ResMut<T6BodyModels>,
@@ -904,7 +914,10 @@ fn collect_t6_bodies(
     // starts again from what the replay shows.
     if now < locals.last_now {
         locals.tracks.clear();
+        locals.limp.clear();
+        locals.joints_before.clear();
     }
+    let ragdoll_def = ragdoll_def.and_then(|r| r.0.clone());
     let dt = (now - locals.last_now).clamp(0, 250) as f32 / 1000.0;
     locals.last_now = now;
     let local_id = local.as_ref().map(|l| l.0);
@@ -1223,7 +1236,6 @@ fn collect_t6_bodies(
         if !corpse && !climbing {
             twist_legs(&dobj, &mut world, legs_yaw);
         }
-        let posed = skin_all(&dobj, &parts, &world);
         let origin = runtime.origin;
         let body_yaw = if climbing { runtime.angles[1] + track.legs_yaw } else { runtime.angles[1] };
         let mut world_from_local = Transform {
@@ -1247,6 +1259,51 @@ fn collect_t6_bodies(
                 .unwrap_or(1.0);
             world_from_local = rest_on_ground(&dobj, &world, world_from_local, origin, clip, lying);
         }
+        // A body gone limp (the server's ragdoll trajectory, from the
+        // script's startragdoll or launchragdoll): BO2's ragdoll takes it
+        // from its death animation where it is, at the speed it moved.
+        if corpse && let Some(def) = ragdoll_def.as_deref() {
+            let next = &runtime.next_state;
+            let limp = (10..=12).contains(&next.tr_type);
+            let launch = (next.tr_type == 11 && next.tr_duration == 1).then(|| Vec3::from_array(next.tr_delta));
+            let clip = clip.as_deref().and_then(|c| c.0.as_deref());
+            let l = &mut *locals;
+            if !limp {
+                l.limp.remove(&number);
+                if let Some(points) = joint_points(def, &dobj, &world, world_from_local) {
+                    l.joints_before.insert(number, (points, now));
+                }
+            } else {
+                let mut started = None;
+                let (ragdoll, thrown) = l.limp.entry(number).or_insert_with(|| {
+                    let last = l
+                        .joints_before
+                        .get(&number)
+                        .map(|(p, t)| (p.as_slice(), (now - *t) as f32 / 1000.0));
+                    let r = Ragdoll::start(def, &dobj, &world, world_from_local, last, launch.unwrap_or(Vec3::ZERO), clip);
+                    started = Some(r.as_ref().map_or_else(
+                        || format!("bo2mp ragdoll: {model} lacks a joint the ragdoll names"),
+                        |r| r.note().to_owned(),
+                    ));
+                    (r, launch.is_some())
+                });
+                if let Some(r) = ragdoll {
+                    if let Some(v) = launch
+                        && !*thrown
+                    {
+                        r.push(v);
+                        *thrown = true;
+                    }
+                    r.step(dt, clip);
+                    world_from_local = r.pose(&mut world);
+                }
+                l.joints_before.remove(&number);
+                if let Some(line) = started {
+                    note_once(l, line);
+                }
+            }
+        }
+        let posed = skin_all(&dobj, &parts, &world);
         // The local player's own corpse: where its j_mainroot is, for the
         // death-watch camera (the newest one if he has several).
         if corpse
@@ -1307,6 +1364,8 @@ fn collect_t6_bodies(
     }
     locals.tracks.retain(|n, _| seen.contains(n));
     locals.corpse_bodies.retain(|(n, _, _), _| seen.contains(n));
+    locals.limp.retain(|n, _| seen.contains(n));
+    locals.joints_before.retain(|n, _| seen.contains(n));
 
     drop(_slow);
     let _slow_items = SlowGuard(std::time::Instant::now(), "t6 ground items");

@@ -232,6 +232,7 @@ impl MapXModelCatalog {
                     parent_damage_percent: stream.f32_at(p, 0xf4).ok()?,
                     bullet_damage_scale: stream.f32_at(p, 0xf8).ok()?,
                     explosive_damage_scale: stream.f32_at(p, 0xfc).ok()?,
+                    melee_damage_scale: stream.f32_at(p, 0x100).ok()?,
                     health: stream.i32_at(p, 0x110).ok()?,
                     hide_bones,
                 });

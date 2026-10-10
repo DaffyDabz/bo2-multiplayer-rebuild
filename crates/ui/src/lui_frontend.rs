@@ -390,6 +390,10 @@ pub(crate) struct MatchValues {
     /// `setvisionsetforplayer` while `useservervisionset` is on; "" the
     /// map's own): his frame's grade.
     pub vision: String,
+    /// bo2mp vehicle screens: his vehicle screen's infrared is on
+    /// (`bo2mp_infrared` "1", `setinfraredvision`): BO2's HUD lights FLIR,
+    /// else OPT.
+    pub infrared: String,
 }
 
 /// His minimap this frame: the map's picture and the world corners it
@@ -548,6 +552,7 @@ impl MatchValues {
             scoped: false,
             vehicle: s("bo2mp_vehicle"),
             vision: s("bo2mp_vision"),
+            infrared: s("bo2mp_infrared"),
         })
     }
 
@@ -850,6 +855,23 @@ pub(crate) fn match_open(host: &mut Host) {
     host.root_event("hud_update_refresh", &[]);
 }
 
+/// bo2mp vehicle screens: BO2's killstreak HUD event for the vehicle he
+/// rides (airvehiclehud.lua UpdateKillstreakHUD: `infrared` lights FLIR,
+/// else OPT).
+fn killstreak_hud(host: &mut Host, new: &MatchValues) {
+    let kind = new.vehicle.split_whitespace().next();
+    host.root_event(
+        "hud_update_killstreak_hud",
+        &[
+            ("controller", Value::Num(0.0)),
+            ("chopperGunner", Value::Bool(kind == Some("heli_player_gunner_mp"))),
+            ("reaper", Value::Bool(kind == Some("remote_mortar_mp"))),
+            ("predator", Value::Bool(kind == Some("remote_missile_mp"))),
+            ("infrared", Value::Bool(new.infrared == "1")),
+        ],
+    );
+}
+
 /// The match's events for what changed: the score bar, the clock, the menus
 /// the server opened, the LUI notifies (score popups, medals).
 pub(crate) fn match_events(host: &mut Host, seen: &mut MatchSeen, old: Option<&MatchValues>, new: &MatchValues, mp: &Mp) {
@@ -965,38 +987,45 @@ pub(crate) fn match_events(host: &mut Host, seen: &mut MatchSeen, old: Option<&M
             .split_once('|')
             .map_or((0, None), |(k, c)| (k.parse::<u8>().unwrap_or(0), c.parse::<i32>().ok().filter(|c| *c >= 0)));
         mp.borrow_mut().callout = killer;
-        // Kind 3 is the card at his death, before the killcam: the widget
-        // opens with its bands and title left out (`bo2mp_deathcard`) and
-        // the rest of the HUD stays. From it into a killcam the widget
-        // opens afresh (it reads its title's bits as it opens).
-        host.values.borrow_mut().dvars.insert("bo2mp_deathcard".to_owned(), if kind == 3 { "1" } else { "0" }.to_owned());
-        if kind != 3
-            && old.is_some_and(|o| o.killcam.starts_with("3|"))
-            && let Some(bit) = host.field("CoD", "BIT_IN_KILLCAM").as_num().map(|n| n as i32)
+        diag::info!(Ui, "bo2mp lui: killcam state {:?}", new.killcam);
+        // Kind 3 is the card at his death, before the killcam: BO2's engine
+        // sends `player_obituary_callout` with the killer's name card and
+        // "Killed By" (notificationpopups.lua PlayerObituaryCallout); the
+        // HUD stays, and the card goes after 2.5 s or as the killcam starts.
+        if kind == 3
+            && let Some(killer) = killer
         {
-            host.values.borrow_mut().bits.remove(&bit);
-            host.root_event(&format!("hud_update_bit_{bit}"), &[("controller", Value::Num(0.0))]);
+            let data = host.field("Engine", "GetCalloutPlayerData");
+            let card = host.call(data, vec![Value::Num(0.0), Value::Num(killer as f32)]).and_then(|r| r.into_iter().next());
+            if let Some(Value::Table(card)) = card {
+                let killed_by = host.values.borrow().localize.get("CGAME_KILLEDBY").cloned().unwrap_or_else(|| "Killed By".to_owned());
+                card.borrow_mut().set_str("killString", Value::str(&killed_by));
+                host.root_event_table("player_obituary_callout", card);
+                diag::info!(Ui, "bo2mp lui: killed-by card sent (killer {killer})");
+            } else {
+                diag::warn!(Ui, "bo2mp lui: no killed-by card: no callout data for {killer}");
+            }
         }
         // The final one's bit first: the widget reads it as it opens.
         // He is dead and watching the killer: the ammo, score and minimap
-        // go (their own bits, set after the killcam's).
+        // go (their own bits, set after the killcam's). Only a bit that
+        // changes is sent: the Killed By card closes on any update of
+        // BIT_IN_KILLCAM.
         let want = [
             ("BIT_FINAL_KILLCAM", kind == 2),
-            ("BIT_IN_KILLCAM", kind >= 1),
+            ("BIT_IN_KILLCAM", (1..=2).contains(&kind)),
             ("BIT_SPECTATING_CLIENT", (1..=2).contains(&kind)),
             ("BIT_PLAYER_DEAD", (1..=2).contains(&kind)),
         ];
         for (name, on) in want {
             let Some(bit) = host.field("CoD", name).as_num().map(|n| n as i32) else { continue };
-            {
+            let changed = {
                 let mut v = host.values.borrow_mut();
-                if on {
-                    v.bits.insert(bit);
-                } else {
-                    v.bits.remove(&bit);
-                }
+                if on { v.bits.insert(bit) } else { v.bits.remove(&bit) }
+            };
+            if changed {
+                host.root_event(&format!("hud_update_bit_{bit}"), &[("controller", Value::Num(0.0))]);
             }
-            host.root_event(&format!("hud_update_bit_{bit}"), &[("controller", Value::Num(0.0))]);
         }
     }
     if old.is_none_or(|o| o.scoped != new.scoped)
@@ -1028,9 +1057,15 @@ pub(crate) fn match_events(host: &mut Host, seen: &mut MatchSeen, old: Option<&M
         // BIT_IN_GUIDED_MISSILE and opens PredatorHUD (predatorhud.lua) on
         // `hud_update_killstreak_hud` with predator set.
         let missile = new.vehicle.split_whitespace().next() == Some("remote_missile_mp");
+        // The Lodestar (remote_mortar_mp, _remotemortar.gsc: his view on its
+        // drone) is ReaperHUD (reaperhud.lua), which hud.lua opens on
+        // `hud_update_killstreak_hud` with reaper set; BIT_IN_VEHICLE hides
+        // the same parts BIT_IN_REMOTE_KILLSTREAK_STATIC does.
+        let reaper = new.vehicle.split_whitespace().next() == Some("remote_mortar_mp");
         diag::info!(
             Ui,
-            "bo2mp hud: vehicle {:?} (chopper gunner screen {gunner}, hellstorm screen {missile})",
+            "bo2mp hud: vehicle {:?} (chopper gunner screen {gunner}, hellstorm screen {missile}, \
+             lodestar screen {reaper})",
             new.vehicle
         );
         // His keys for the vehicle's own commands: BO2 binds each (up, down,
@@ -1061,27 +1096,25 @@ pub(crate) fn match_events(host: &mut Host, seen: &mut MatchSeen, old: Option<&M
             }
             host.root_event(&format!("hud_update_bit_{bit}"), &[("controller", Value::Num(0.0))]);
         }
-        host.root_event(
-            "hud_update_killstreak_hud",
-            &[
-                ("controller", Value::Num(0.0)),
-                ("chopperGunner", Value::Bool(gunner)),
-                ("reaper", Value::Bool(false)),
-                ("predator", Value::Bool(missile)),
-            ],
-        );
+        killstreak_hud(host, new);
         // The drones' own screens: hud.lua's `hud_update_vehicle` closes the
         // last vehicle screen and opens `LUI.createMenu[vehicleType]`, which
         // BO2 has for the Dragonfire (qrdrone_mp, hud/qrdrone.lua) and the
         // AGR (ai_tank_drone_mp, hud/aitank.lua); on foot there is no type.
         // Sent after the killstreak event, which AirVehicleHUD screens also
         // hear.
-        let kind = new.vehicle.split_whitespace().next().filter(|_| !missile).unwrap_or("");
+        let kind = new.vehicle.split_whitespace().next().filter(|_| !missile && !reaper).unwrap_or("");
         let mut fields = vec![("controller", Value::Num(0.0))];
         if !kind.is_empty() {
             fields.push(("vehicleType", Value::str(kind)));
         }
         host.root_event("hud_update_vehicle", &fields);
+    }
+    // His screen's infrared switched (the Lodestar's and the VTOL Warship's
+    // change-view key): hud.lua opens a screen only when it has none, so the
+    // event again just relights the boxes.
+    if !changed(|v| &v.vehicle) && changed(|v| &v.infrared) {
+        killstreak_hud(host, new);
     }
     if changed(|v| &v.vision) {
         let found = asset_world::set_t6_player_vision(&new.vision);

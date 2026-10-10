@@ -732,6 +732,46 @@ pub struct DestructibleRef {
     pub model: String,
     /// The pristine variant.
     pub pristine_model: String,
+    /// The pieces that break off (`DestructiblePiece`), piece 0 the base.
+    pub pieces: Vec<DestructiblePieceRef>,
+    /// Only the clients break it (nothing the server tracks).
+    pub client_only: bool,
+}
+
+/// bo2mp: one piece of a destructible (`DestructiblePiece`): its health,
+/// how much each kind of damage counts, the stages it breaks through and
+/// the bones it starts with hidden.
+#[derive(Clone, Debug, Default)]
+pub struct DestructiblePieceRef {
+    pub stages: [DestructibleStageRef; 5],
+    pub parent_piece: u8,
+    pub parent_damage_percent: f32,
+    pub bullet_damage_scale: f32,
+    pub explosive_damage_scale: f32,
+    pub melee_damage_scale: f32,
+    pub health: i32,
+    /// Hide-part bits (`hideBones`), the model's bone order.
+    pub hide_bones: [u32; 5],
+}
+
+/// bo2mp: one stage of a piece (`DestructibleStage`): the bone it shows,
+/// the share of the piece's health it lasts to, and what breaking out of
+/// it plays and tells the scripts. Empty strings are unset.
+#[derive(Clone, Debug, Default)]
+pub struct DestructibleStageRef {
+    /// Empty: the stage shows nothing (the piece's last).
+    pub show_bone: String,
+    pub break_health: f32,
+    /// A stage that breaks by itself after this many seconds.
+    pub max_time: f32,
+    pub flags: u32,
+    pub break_effect: String,
+    pub break_sound: String,
+    /// What the scripts hear (`CodeCallback_DestructibleEvent` "broken").
+    pub break_notify: String,
+    pub loop_sound: String,
+    pub spawn_models: [String; 3],
+    pub phys_preset: bool,
 }
 
 /// bo2mp: how a vehicle drives and how its driver sees it (`VehicleDef`).
@@ -2300,10 +2340,71 @@ impl WalkSink for ZoneCapture {
                 };
                 let model = model_of(self, l::DestructibleDef::model);
                 let pristine_model = model_of(self, l::DestructibleDef::pristineModel);
+                let count = s.i32_at(body, l::DestructibleDef::numPieces)?.clamp(0, 64) as usize;
+                let mut pieces = Vec::with_capacity(count);
+                if let Some(first) = deref(s, body, l::DestructibleDef::pieces)? {
+                    use l::{DestructiblePiece as dp, DestructibleStage as ds};
+                    for i in 0..count {
+                        let p = first.at(i * dp::SIZE);
+                        let mut stages: [DestructibleStageRef; 5] = Default::default();
+                        for (j, stage) in stages.iter_mut().enumerate() {
+                            let q = p.at(dp::stages + j * ds::SIZE);
+                            let bone = s.u16_at(q, ds::showBone)?;
+                            let break_effect = self
+                                .asset_at(s, q.at(ds::breakEffect))?
+                                .filter(|k| k.ty == AssetType::Fx)
+                                .and_then(|k| self.fx.get(k.index))
+                                .map(|f| f.name.trim_start_matches(',').to_owned())
+                                .unwrap_or_default();
+                            let mut spawn_models: [String; 3] = Default::default();
+                            for (k, m) in spawn_models.iter_mut().enumerate() {
+                                *m = self
+                                    .asset_at(s, q.at(ds::spawnModel + k * 4))?
+                                    .filter(|k| k.ty == AssetType::XModel)
+                                    .and_then(|k| self.xmodels.get(k.index))
+                                    .map(|m| m.name.trim_start_matches(',').to_owned())
+                                    .unwrap_or_default();
+                            }
+                            *stage = DestructibleStageRef {
+                                show_bone: if bone == 0 {
+                                    String::new()
+                                } else {
+                                    self.strings.get(usize::from(bone)).cloned().unwrap_or_default()
+                                },
+                                break_health: s.f32_at(q, ds::breakHealth)?,
+                                max_time: s.f32_at(q, ds::maxTime)?,
+                                flags: s.u32_at(q, ds::flags)?,
+                                break_effect,
+                                break_sound: string_field(s, q, ds::breakSound)?,
+                                break_notify: string_field(s, q, ds::breakNotify)?,
+                                loop_sound: string_field(s, q, ds::loopSound)?,
+                                spawn_models,
+                                phys_preset: s.u32_at(q, ds::physPreset)? != 0,
+                            };
+                        }
+                        let mut hide_bones = [0u32; 5];
+                        for (j, word) in hide_bones.iter_mut().enumerate() {
+                            *word = s.u32_at(p, dp::hideBones + j * 4)?;
+                        }
+                        pieces.push(DestructiblePieceRef {
+                            stages,
+                            parent_piece: s.slice_at(p, dp::parentPiece, 1)?[0],
+                            parent_damage_percent: s.f32_at(p, dp::parentDamagePercent)?,
+                            bullet_damage_scale: s.f32_at(p, dp::bulletDamageScale)?,
+                            explosive_damage_scale: s.f32_at(p, dp::explosiveDamageScale)?,
+                            melee_damage_scale: s.f32_at(p, dp::meleeDamageScale)?,
+                            health: s.i32_at(p, dp::health)?,
+                            hide_bones,
+                        });
+                    }
+                }
+                let client_only = s.i32_at(body, l::DestructibleDef::clientOnly)? != 0;
                 self.destructibles.push(DestructibleRef {
                     name,
                     model,
                     pristine_model,
+                    pieces,
+                    client_only,
                 });
                 None
             }

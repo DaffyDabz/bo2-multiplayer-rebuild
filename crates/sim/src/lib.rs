@@ -38,6 +38,7 @@ mod step;
 // bo2zm M3: Black Ops II Zombies' own scripts.
 mod t6;
 pub mod t6_playeranim;
+pub mod t6_ragdoll;
 pub use t6::stats::{set_local_match_ranked, set_local_stats_path}; // bo2mp lane C
 pub use t6::{T6Anim, T6Install, T6PathNode, T6Table, T6Vehicle, T6VehicleDrive};
 pub mod t5_destructible;
@@ -95,7 +96,7 @@ pub use input::{
     ActionRequestId, ClassId, ClientAction, MENU_RESPONSE_BYTES, SpawnPick, TickInput,
     action_request_id, menu_response_field, menu_response_text,
 };
-pub use mantle_xanim::MantleXAnimBind;
+pub use mantle_xanim::{MANTLE_XANIM_NAMES_T6, MantleXAnimBind, PERK_MANTLE_REDUCTION_DEFAULT};
 pub use match_state::{
     ClassDef, ClassRejectReason, ClientLifecycle, ClientSnapshotMeta,
     ConfigurationChangeRejectReason, DroppedItemAmmo, EntityEventPayload, EntityEventRecord,

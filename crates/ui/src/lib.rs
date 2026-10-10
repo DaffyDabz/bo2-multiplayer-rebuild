@@ -12,6 +12,7 @@ mod plugin;
 mod screen;
 mod bo2_font;
 mod scope_hint; // bo2mp scope lane
+mod overhead_names; // bo2mp: names over heads in BO2's font
 mod zm_hud;
 mod lui_hud; // bo2zm M4
 mod lui_additive; // bo2mp scope: true additive HUD pictures
@@ -40,6 +41,7 @@ pub use frame::{AppScreen, LaunchIdentity, LaunchReport};
 pub use frame::{ClassPreset, showcase_classes};
 pub use gap_hud::GapHud;
 pub use lui_additive::AdditiveUi;
+pub use overhead_names::{OverheadNameRow, OverheadNameRows};
 pub use launch_report::publish_gap_hud;
 pub use layers::{
     ApplyUiLayers, GameUiFont, UiCamera, UiDraw, UiLayer, UiLayerVisibility, UiLayers,

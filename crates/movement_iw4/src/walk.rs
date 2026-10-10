@@ -33,8 +33,9 @@ pub fn walk_move<C: CollisionBackend>(
     if (ps.pm_flags & 0x2000) != 0 {
         prone_velocity_scale(ps, context.feel);
     }
-    // bo2zm: Black Ops II slows sideways input while sprinting.
-    if context.feel.on && (ps.pm_flags & 0x4000) != 0 {
+    // bo2zm: Black Ops II slows sideways input while sprinting (not with
+    // sprint in any direction).
+    if context.feel.on && !context.feel.omni && (ps.pm_flags & 0x4000) != 0 {
         cmd.rightmove =
             ((cmd.rightmove as f32) * context.feel.sprint_strafe_speed_scale) as i32 as i8;
     }
@@ -51,8 +52,9 @@ pub fn walk_move<C: CollisionBackend>(
 
     friction(ps, pml, context.feel.on);
 
+    let cmd_scale = crate::feel::omni_cmd_scale(ps, context.cmd_scale, context.feel); // bo2zm
     let command_scale =
-        cmd_scale_walk(ps, cmd, context.cmd_scale) * crate::damage_scale_walk(ps.damage_timer);
+        cmd_scale_walk(ps, cmd, cmd_scale) * crate::damage_scale_walk(ps.damage_timer);
     crate::walk_move_drop_damage_timer(ps, pml.frametime);
     let mut forward = pml.forward;
     let mut right = pml.right;

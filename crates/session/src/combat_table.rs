@@ -27,6 +27,8 @@ pub(crate) fn validated_facts(
     }
     WeaponCombatFacts::try_from_captured(CapturedCombatInput {
         fire_time_ms: f.fire_time_ms,
+        intro_fire_time_ms: f.intro_fire_time_ms,
+        intro_fire_length: f.intro_fire_length,
         fire_delay_ms: f.fire_delay_ms,
         raise_time_ms: f.raise_time_ms,
         drop_time_ms: f.drop_time_ms,

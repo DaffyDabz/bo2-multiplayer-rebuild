@@ -493,10 +493,11 @@ pub fn key_move_bits(kb: &KbuttonSet, using_ads: bool, mut bits: u32) -> u32 {
     } else {
         bits &= !buttons::ADS;
     }
+    // bo2zm: the sprint key counts with the back key held too, so a
+    // sprint can run in any direction; the movement rules decide whether
+    // backwards counts.
     if kb.sprint.active || kb.sprint.was_pressed {
-        if !kb.back.active {
-            bits |= buttons::SPRINT;
-        }
+        bits |= buttons::SPRINT;
     } else {
         bits &= !buttons::SPRINT;
     }

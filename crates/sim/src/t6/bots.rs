@@ -964,6 +964,17 @@ pub(super) fn drive(world: &mut World, now: i64) {
             );
         }
         drop(zm);
+        // BO2MP_BOTS_STILL=1: the bots stand where they are and do nothing;
+        // =fire:N (or fire:N,M) and those bots fire where they face too
+        // (test aids, for a target that stays put and a shooter that does).
+        if let Some(still) = std::env::var_os("BO2MP_BOTS_STILL") {
+            let firing = still
+                .to_str()
+                .and_then(|s| s.strip_prefix("fire:"))
+                .is_some_and(|ids| ids.split(',').any(|i| i.trim().parse::<u32>() == Ok(n)));
+            let attack = if firing && (now / 100) % 2 == 0 { buttons::ATTACK } else { 0 };
+            (forward, right, press, want) = (0, 0, attack, view);
+        }
         // Its command for the tick, the view turned as a script's
         // setplayerangles turns it (the delta under the command angles).
         let mut cmd_angles = None;

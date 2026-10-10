@@ -55,6 +55,20 @@ pub(crate) fn register(app: &mut App) {
     );
 }
 
+/// bo2mp: BO2's name colours. The engine colours a name by its team against
+/// yours (`name_color`: MW2's g_TeamColor_MyTeam / EnemyTeam); these are
+/// BO2's values of the same two dvars, as its kill feed measures them
+/// (`hks_t6` ENGINE_DVARS: his side blue-grey, the other tan).
+fn bo2_name_color(local_team: i32, target_team: i32) -> [f32; 4] {
+    if target_team == 3 {
+        [0.65, 0.65, 0.65, 1.0]
+    } else if local_team != 0 && local_team == target_team {
+        [0.6, 0.64, 0.69, 1.0]
+    } else {
+        [0.65, 0.57, 0.41, 1.0]
+    }
+}
+
 fn name_color(local_team: i32, target_team: i32) -> [f32; 4] {
     if target_team == 3 {
         [0.65, 0.65, 0.65, 1.0]
@@ -120,8 +134,13 @@ fn update_overhead_names(
     mut pass: ResMut<HudTessPass>,
     mut memory: Local<NameMemory>,
     mut gaps: ResMut<HudPresentationGaps>,
+    bo2_rows: Option<ResMut<ui::OverheadNameRows>>,
 ) {
     pass.overhead_names = TessJob::Hide;
+    let mut bo2_rows = bo2_rows;
+    if let Some(rows) = bo2_rows.as_deref_mut() {
+        rows.0.clear();
+    }
     gaps.clear(HudGap::OverheadNames);
     let now = cg_clock.time();
     if memory.last_time.is_some_and(|last| now < last) {
@@ -177,10 +196,9 @@ fn update_overhead_names(
         return;
     };
     let font_name = ui_get_font_handle(2, surface.scale_virtual_to_real()[1], 1.0);
-    let Some(font) = catalog.as_ref().and_then(|c| c.font(font_name)) else {
-        gaps.raise(GapCause::OverheadFontUnavailable);
-        return;
-    };
+    // bo2mp: a BO2 match has no MW2 menu font; its names go to the UI's BO2
+    // font instead (`ui::OverheadNameRows`).
+    let font = catalog.as_ref().and_then(|c| c.font(font_name));
     let eye = transform.translation();
     let forward = *transform.forward();
     let mut candidates = Vec::new();
@@ -306,6 +324,27 @@ fn update_overhead_names(
             OVERHEAD_FAR_DISTANCE_DEFAULT,
             OVERHEAD_FAR_SCALE_DEFAULT,
         );
+        let Some(font) = font else {
+            let mut color = bo2_name_color(local_meta.client_state_team, team);
+            color[3] = alpha;
+            let Some(rows) = bo2_rows.as_deref_mut() else {
+                continue;
+            };
+            // The same size rule as the MW2 names below (the font's height
+            // is the name size in text ems, in window pixels); BO2's own
+            // 720p config sets cg_overheadNamesSize to that same 0.65. The
+            // name's baseline sits on the head point, as there.
+            let px = OVERHEAD_NAME_SIZE_DEFAULT * hud_iw4::font::R_TEXT_EM * distance;
+            rows.0.push(ui::OverheadNameRow {
+                ent,
+                text: name,
+                x: pixel.x,
+                y: pixel.y.round() - px * 0.5,
+                px,
+                color,
+            });
+            continue;
+        };
         let scale = normalized_text_scale(font.pixel_height, OVERHEAD_NAME_SIZE_DEFAULT * distance);
         let rank_scale =
             normalized_text_scale(font.pixel_height, OVERHEAD_RANK_SIZE_DEFAULT * distance);
@@ -378,6 +417,9 @@ fn update_overhead_names(
             });
         }
     }
+    let Some(font) = font else {
+        return;
+    };
     let fonts = HashMap::from([(font_name.to_owned(), font)]);
     let (quads, _) = tessellate_fonts(&list, &fonts);
     if !quads.is_empty() {

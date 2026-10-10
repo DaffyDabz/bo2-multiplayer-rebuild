@@ -225,6 +225,7 @@ pub(super) fn bind(vm: &mut Vm<World>) {
         if streaks(world).rides.contains_key(&n) {
             end_ride(world, n);
         }
+        super::view_link::end(world, n);
         let mut zm = world.resource_mut::<Zm>();
         if let Some(p) = zm.players.get_mut(&n) {
             p.linked = None;

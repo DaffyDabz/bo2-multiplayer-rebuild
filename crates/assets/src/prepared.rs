@@ -59,6 +59,8 @@ pub struct MapFacts {
     /// bo2mp: the third-person player animation script and its anim types
     /// (every client poses other players with it).
     pub t6_playeranim: Option<(String, String)>,
+    /// bo2mp: the ragdoll definitions (`ragdoll.cfg`).
+    pub t6_ragdoll: Option<String>,
     /// bo2mp: each player animation's move speed (units/s, from its root
     /// motion): a legs animation plays at the player's speed over this.
     pub t6_anim_speeds: Vec<(String, f32)>,

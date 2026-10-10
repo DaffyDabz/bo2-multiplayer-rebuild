@@ -419,6 +419,30 @@ pub(super) fn sync(world: &mut World, now_ms: i64) {
             shown.model = model;
             shown.attachments = attachments;
         }
+        // bo2mp: a map destructible (a mannequin, a car) breaks by its
+        // definition; its shown pieces stop bullets.
+        let destructible = (n & PIECE_BIT == 0)
+            .then(|| {
+                let zm = world.resource::<Zm>();
+                let name = zm.ents.get(&n)?.destructible.as_ref()?;
+                zm.destructibles.get(name).cloned()
+            })
+            .flatten();
+        if let Some(def) = &destructible {
+            let mut f = frame(world);
+            if let Some(row) = f.collision_owner_mut(shown.id)
+                && let Some(dobj) = row.dobj.as_mut()
+                && !crate::t5_destructible::installed(dobj, &def.name)
+            {
+                crate::t5_destructible::install_hosted(dobj, def.clone());
+                diag::info!(
+                    Sim,
+                    "bo2mp destructible {} ent{n} at {:?}",
+                    def.name,
+                    shown.origin
+                );
+            }
+        }
         // Actors: bullets hit the living (their posed hit boxes), and the
         // playing animation goes out as the model row's one leaf.
         let alive_actor = world
@@ -447,13 +471,18 @@ pub(super) fn sync(world: &mut World, now_ms: i64) {
                 mover.state.solid = packed;
             }
             if let Some(row) = f.collision_owner_mut(shown.id) {
-                row.solid = boxes.is_some();
-                if let Some(dobj) = row.dobj.as_mut() {
-                    dobj.current_collision = boxes.map(|bones| {
-                        crate::bullet_collision::AuthorityDObjCollision { bones, coll: None }
-                    });
-                    dobj.materialized_model_revision = Some(dobj.model_revision);
-                    dobj.materialized_pose_revision = Some(dobj.pose_revision);
+                if destructible.is_some() && !alive_actor {
+                    // Its bones as posed (bullet_collision materialize).
+                    row.solid = !hidden;
+                } else {
+                    row.solid = boxes.is_some();
+                    if let Some(dobj) = row.dobj.as_mut() {
+                        dobj.current_collision = boxes.map(|bones| {
+                            crate::bullet_collision::AuthorityDObjCollision { bones, coll: None }
+                        });
+                        dobj.materialized_model_revision = Some(dobj.model_revision);
+                        dobj.materialized_pose_revision = Some(dobj.pose_revision);
+                    }
                 }
             }
         }

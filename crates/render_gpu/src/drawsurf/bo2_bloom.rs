@@ -51,7 +51,7 @@ pub(super) struct Bo2BloomEnabled(pub bool);
 
 /// How much BO2's menus blur the world this frame (0 = none; 2 = full).
 #[derive(Resource, Default)]
-struct Bo2MenuBlur(f32, f32, f32, f32);
+pub(super) struct Bo2MenuBlur(f32, f32, f32, f32);
 
 fn extract_menu_blur(
     blur: bevy::render::Extract<Option<Res<frame::WorldBlur>>>,
@@ -72,7 +72,7 @@ fn extract_menu_blur(
 }
 
 #[derive(Resource)]
-struct Bo2Bloom {
+pub(super) struct Bo2Bloom {
     layout: BindGroupLayoutDescriptor,
     composite_layout: BindGroupLayoutDescriptor,
     shader: Handle<Shader>,
@@ -170,7 +170,7 @@ fn pipeline(
     }
 }
 
-fn draw_bo2_bloom(
+pub(super) fn draw_bo2_bloom(
     view: ViewQuery<&ViewTarget>,
     enabled: Res<Bo2BloomEnabled>,
     menu_blur: Res<Bo2MenuBlur>,

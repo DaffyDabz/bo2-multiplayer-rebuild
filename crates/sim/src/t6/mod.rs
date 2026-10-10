@@ -26,6 +26,7 @@ mod autoplay;
 mod bots;
 mod brushes;
 mod clientfields;
+mod destructible;
 mod engine_sounds;
 mod fields;
 mod globallogic;
@@ -99,6 +100,8 @@ pub struct T6Install {
     pub vehicles: Vec<T6Vehicle>,
     /// bo2mp: BO2's third-person player animation script, parsed.
     pub playeranim: Option<Arc<crate::t6_playeranim::T6PlayerAnims>>,
+    /// bo2mp: the destructibles the map's entities name (`destructibledef`).
+    pub destructibles: Vec<Arc<xmodel_runtime::T5DestructibleDef>>,
 }
 
 /// bo2mp: a vehicle def from his zones: its guns, how it drives and how
@@ -210,6 +213,9 @@ pub(crate) struct Ent {
     pub trigger_off: bool,
     /// bo2mp: the engine's dropped item (a gun, a scavenger bag) this is.
     pub item: Option<i32>,
+    /// bo2mp: the destructible definition (`destructibledef`) a map entity
+    /// breaks by, lower case.
+    pub destructible: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -370,6 +376,8 @@ pub(crate) struct Zm {
     pub use_held: BTreeSet<u32>,
     /// The hint of the use trigger each player faces.
     pub hints: BTreeMap<u32, String>,
+    /// bo2mp: the destructible definitions by lower-case name.
+    pub destructibles: std::collections::HashMap<String, Arc<xmodel_runtime::T5DestructibleDef>>,
 }
 
 /// Entity numbers: players are their client number; the rest start here.
@@ -653,6 +661,11 @@ pub(crate) fn install(world: &mut World, inst: T6Install) -> Result<(), String> 
         node_objs,
         anims,
         asds,
+        destructibles: inst
+            .destructibles
+            .into_iter()
+            .map(|d| (d.name.to_ascii_lowercase(), d))
+            .collect(),
         ..Default::default()
     });
     killstreaks::install(world, inst.vehicles);
@@ -1026,6 +1039,7 @@ fn advance_inner(world: &mut World) {
     }
     timed("presence", world, |world| {
         presence::sync(world, now);
+        destructible::flush(world);
         brushes::sync(world, now);
     });
     timed("loops+fx", world, |world| {
@@ -1326,6 +1340,26 @@ pub(crate) fn entity_hit(world: &mut World, hit: &crate::script::EntityHit) -> b
         .get(&n)
         .is_some_and(|a| a.alive);
     if !alive {
+        // bo2mp: a map's breakable (a Nuketown mannequin, a car) takes a
+        // blast or a knife by the piece's own scale.
+        let breakable = world
+            .resource::<Zm>()
+            .ents
+            .get(&n)
+            .is_some_and(|e| e.destructible.is_some());
+        if breakable {
+            let t = tick(world);
+            crate::t5_destructible::apply_damage(
+                &mut frame(world),
+                t,
+                crate::AuthorityModelOwner::ScriptModel(hit.target),
+                hit.bone.and_then(|b| u16::try_from(b).ok()),
+                hit.amount,
+                destructible::kind(hit.means),
+                hit.attacker,
+                hit.weapon,
+            );
+        }
         return true;
     }
     // The struck bone's hit location.
@@ -1611,6 +1645,8 @@ pub(crate) fn radius_targets(
             (d < radius).then_some((id, mid, d))
         })
         .collect();
+    // bo2mp: and the map's breakables, measured to their nearest part.
+    out.extend(destructible::radius_targets(world, origin, radius));
     out.sort_by(|a, b| a.2.total_cmp(&b.2));
     out
 }

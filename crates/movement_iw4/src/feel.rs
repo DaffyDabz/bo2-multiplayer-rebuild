@@ -50,6 +50,18 @@ pub struct Bo2Feel {
     pub sprint_cycle_scale: f32,
     pub ducked_sprint_cycle_scale: f32,
     pub dtp_cycle_scale: f32,
+
+    /// Sprint in any direction at full speed, and dive whichever way you
+    /// are moving (an owner's ask; BO2 itself sprints forward only).
+    /// `BO2_OMNI=off` turns it off.
+    pub omni: bool,
+
+    /// mantle_weapon_height: a climb this low (by its climb table height)
+    /// keeps the gun in hand; mantle_weapon_anim_height: one higher than
+    /// this also plays the gun's climb camera animation. 0 lowers the gun
+    /// for every climb.
+    pub mantle_weapon_height: f32,
+    pub mantle_weapon_anim_height: f32,
 }
 
 impl Bo2Feel {
@@ -68,7 +80,41 @@ impl Bo2Feel {
         sprint_cycle_scale: 1.0,
         ducked_sprint_cycle_scale: 1.0,
         dtp_cycle_scale: 1.0,
+        omni: false,
+        mantle_weapon_height: 0.0,
+        mantle_weapon_anim_height: 0.0,
     };
+}
+
+/// Sprint in any direction: the sprint rules see how far the stick (or the
+/// keys) push in any direction as a push forward.
+#[must_use]
+pub fn omni_sprint_cmd(cmd: &UserCmd, feel: Bo2Feel) -> UserCmd {
+    let mut out = *cmd;
+    if feel.on && feel.omni {
+        let (f, r) = (f32::from(cmd.forwardmove), f32::from(cmd.rightmove));
+        out.forwardmove = libm::sqrtf(f * f + r * r).min(127.0) as i8;
+    }
+    out
+}
+
+/// Sprint in any direction at full speed: while sprinting, moving back or
+/// sideways is not slowed.
+#[must_use]
+pub fn omni_cmd_scale(
+    ps: &PlayerState,
+    scale: crate::CmdScaleWalkContext,
+    feel: Bo2Feel,
+) -> crate::CmdScaleWalkContext {
+    if feel.on && feel.omni && ps.pm_flags & pm_flags::SPRINTING != 0 {
+        crate::CmdScaleWalkContext {
+            player_back_speed_scale: 1.0,
+            player_strafe_speed_scale: 1.0,
+            ..scale
+        }
+    } else {
+        scale
+    }
 }
 
 /// Fall perk (specialty_fallheight) in multiplayer.

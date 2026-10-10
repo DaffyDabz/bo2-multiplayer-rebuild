@@ -84,7 +84,8 @@ pub fn weapon_check_for_change(
     let cmd_w = u32::from(cmd.cmd_weapon);
 
     if hand.weapon != cmd_w {
-        let blocked = (cmd.pm_flags & PMF_CHANGE_BLOCK) != 0 && hand.weapon != 0;
+        let blocked =
+            ((cmd.pm_flags & PMF_CHANGE_BLOCK) != 0 || cmd.mantle_weapon_up) && hand.weapon != 0;
         if blocked {
             return None;
         }

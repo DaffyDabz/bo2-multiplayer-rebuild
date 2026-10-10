@@ -1397,7 +1397,7 @@ mod tests {
             add_child(&list, &c, None);
         }
         let laid = layout(&list, [0.0, 0.0, 100.0, 100.0]);
-        let tops: Vec<(f32, f32)> = laid.iter().skip(1).map(|(_, r, _, _)| (r[1], r[3])).collect();
+        let tops: Vec<(f32, f32)> = laid.iter().skip(1).map(|(_, r, _)| (r[1], r[3])).collect();
         assert_eq!(tops, vec![(0.0, 30.0), (32.0, 62.0)]);
         with(&list, |e| e.state.alignment = 5);
         let laid = layout(&list, [0.0, 0.0, 100.0, 100.0]);

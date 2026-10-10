@@ -63,6 +63,8 @@ fn hash_combat(h: &mut Digest, combat: &[WeaponCombatFacts]) {
     h.u64(combat.len() as u64);
     for row in combat {
         h.i32(row.fire_time_ms);
+        h.i32(row.intro_fire_time_ms);
+        h.i32(row.intro_fire_length);
         h.i32(row.fire_delay_ms);
         h.i32(row.raise_time_ms);
         h.i32(row.drop_time_ms);

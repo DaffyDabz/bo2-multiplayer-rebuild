@@ -460,18 +460,30 @@ impl Host {
             // his binds put that command on, by its KEY_* name ("Hold [F] to
             // Exit", the VTOL Warship's MP_CHOPPER_GUNNER_* prompts); a
             // command with no key shows BO2's own KEY_UNBOUND text
-            // ("UNBOUND", the word its Controls rows show for one).
-            let mut from = 0;
-            while let Some(start) = text[from..].find("[{").map(|s| s + from) {
-                let Some(len) = text[start..].find("}]") else { break };
-                let cmd = text[start + 2..start + len].to_owned();
-                let key = v.borrow().keys_of(&cmd).and_then(|k| k.first().cloned());
-                let name = match key {
+            // ("UNBOUND", the word its Controls rows show for one). The
+            // sticks are keyboard-and-mouse words: the look stick is the
+            // mouse (MENU_MOUSE_LOOK, the Hellstorm's "Steer"), the move
+            // stick the four movement keys.
+            let key_name = |cmd: &str| {
+                let key = v.borrow().keys_of(cmd).and_then(|k| k.first().cloned());
+                match key {
                     Some(key) => {
                         let up = key.to_uppercase();
                         v.borrow().localize.get(&format!("KEY_{up}")).cloned().unwrap_or(up)
                     }
                     None => v.borrow().localize.get("KEY_UNBOUND").cloned().unwrap_or_else(|| "UNBOUND".to_owned()),
+                }
+            };
+            let mut from = 0;
+            while let Some(start) = text[from..].find("[{").map(|s| s + from) {
+                let Some(len) = text[start..].find("}]") else { break };
+                let cmd = text[start + 2..start + len].to_owned();
+                let name = if cmd.eq_ignore_ascii_case("+lookstick") {
+                    v.borrow().localize.get("MENU_MOUSE_LOOK").cloned().unwrap_or_else(|| "Mouse Look".to_owned())
+                } else if cmd.eq_ignore_ascii_case("+movestick") {
+                    ["+forward", "+back", "+moveleft", "+moveright"].map(key_name).join(",")
+                } else {
+                    key_name(&cmd)
                 };
                 text.replace_range(start..start + len + 2, &format!("[{name}]"));
                 from = start + name.len() + 2;
@@ -872,6 +884,16 @@ impl Host {
         if let Some(root) = self.roots.first().cloned() {
             self.event(&root, name, fields);
         }
+    }
+
+    /// An event whose fields are a table already made (a name card the
+    /// engine sends as the event itself: `player_obituary_callout`).
+    pub fn root_event_table(&mut self, name: &str, t: TableRef) {
+        let Some(root) = self.roots.first().cloned() else { return };
+        t.borrow_mut().set_str("name", Value::str(name));
+        t.borrow_mut().set_str("controller", Value::Num(0.0));
+        let pe = self.vm.index(&root, &Value::str("processEvent")).unwrap_or(Value::Nil);
+        self.call(pe, vec![root, Value::Table(t)]);
     }
 
     /// An event whose data is a list (`hud_update_rewards`: the event is
